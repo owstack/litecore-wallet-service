@@ -7,8 +7,8 @@ var https = require('https');
 var http = require('http');
 var async = require('async');
 var path = require('path');
-var bitcore = require('bitcore-lib');
-var Networks = bitcore.Networks;
+var ltcLib = require('@owstack/ltc-lib');
+var Networks = ltcLib.Networks;
 var Locker = require('locker-server');
 var BlockchainMonitor = require('../lib/blockchainmonitor');
 var EmailService = require('../lib/emailservice');
@@ -17,33 +17,34 @@ var child_process = require('child_process');
 var spawn = child_process.spawn;
 var EventEmitter = require('events').EventEmitter;
 var baseConfig = require('../config');
+var Constants = require('../lib/common/constants');
 
 /**
- * A Bitcore Node Service module
+ * A Ltc Node Service module
  * @param {Object} options
- * @param {Node} options.node - A reference to the Bitcore Node instance
+ * @param {Node} options.node - A reference to the Ltc Node instance
 -* @param {Boolean} options.https - Enable https for this module, defaults to node settings.
- * @param {Number} options.bwsPort - Port for Bitcore Wallet Service API
- * @param {Number} options.messageBrokerPort - Port for BWS message broker
- * @param {Number} options.lockerPort - Port for BWS locker port
+ * @param {Number} options.ltcwsPort - Port for Ltc Wallet Service API
+ * @param {Number} options.messageBrokerPort - Port for LTCWS message broker
+ * @param {Number} options.lockerPort - Port for LTCWS locker port
  */
 var Service = function(options) {
   EventEmitter.call(this);
-
+  this.config = options.config || baseConfig;
   this.node = options.node;
   this.https = options.https || this.node.https;
   this.httpsOptions = options.httpsOptions || this.node.httpsOptions;
-  this.bwsPort = options.bwsPort || baseConfig.port;
+  this.ltcwsPort = options.ltcwsPort || this.config.port;
   this.messageBrokerPort = options.messageBrokerPort || 3380;
-  if (baseConfig.lockOpts) {
-    this.lockerPort = baseConfig.lockOpts.lockerServer.port;
+  if (this.config.lockOpts) {
+    this.lockerPort = this.config.lockOpts.lockerServer.port;
   }
   this.lockerPort = options.lockerPort || this.lockerPort;
 };
 
 util.inherits(Service, EventEmitter);
 
-Service.dependencies = ['insight-api'];
+Service.dependencies = ['@owstack/ltc-explorer-api'];
 
 /**
  * This method will read `key` and `cert` files from disk based on `httpsOptions` and
@@ -71,36 +72,11 @@ Service.prototype._readHttpsOptions = function() {
 };
 
 /**
- * Will get the configuration with settings for the locally
- * running Insight API.
+ * Will get the configuration settings.
  * @returns {Object}
  */
 Service.prototype._getConfiguration = function() {
-  var self = this;
-
-  var providerOptions = {
-    provider: 'insight',
-    url: (self.node.https ? 'https://' : 'http://') + 'localhost:' + self.node.port,
-    apiPrefix: '/insight-api'
-  };
-
-  // A bitcore-node is either livenet or testnet, so we'll pass
-  // the configuration options to communicate via the local running
-  // instance of the insight-api service.
-  if (self.node.network === Networks.livenet) {
-    baseConfig.blockchainExplorerOpts = {
-      livenet: providerOptions
-    };
-  } else if (self.node.network === Networks.testnet) {
-    baseConfig.blockchainExplorerOpts = {
-      testnet: providerOptions
-    };
-  } else {
-    throw new Error('Unknown network');
-  }
-
-  return baseConfig;
-
+  return this.config;
 };
 
 /**
@@ -121,7 +97,7 @@ Service.prototype._startWalletService = function(config, next) {
     if (err) {
       return next(err);
     }
-    self.server.listen(self.bwsPort, next);
+    self.server.listen(self.ltcwsPort, next);
   });
 };
 
@@ -129,14 +105,8 @@ Service.prototype._startWalletService = function(config, next) {
  * Called by the node to start the service
  */
 Service.prototype.start = function(done) {
-
   var self = this;
-  var config;
-  try {
-    config = self._getConfiguration();
-  } catch (err) {
-    return done(err);
-  }
+  var config = this._getConfiguration();
 
   // Locker Server
   var locker = new Locker();
@@ -154,8 +124,8 @@ Service.prototype.start = function(done) {
 
     function(next) {
       // Blockchain Monitor
-      var blockChainMonitor = new BlockchainMonitor();
-      blockChainMonitor.start(config, next);
+      var blockchainMonitor = new BlockchainMonitor();
+      blockchainMonitor.start(config, next);
     },
     function(next) {
       // Email Service

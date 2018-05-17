@@ -1,9 +1,9 @@
 var config = {
-  basePath: '/bws/api',
+  basePath: '/ltcws/api',
   disableLogs: false,
   port: 3232,
 
-  // Uncomment to make BWS a forking server
+  // Uncomment to make LTCWS a forking server
   // cluster: true,
 
   // Uncomment to set the number or process (will use the nr of availalbe CPUs by default)
@@ -21,7 +21,7 @@ var config = {
 
   storageOpts: {
     mongoDb: {
-      uri: 'mongodb://localhost:27017/bws',
+      uri: 'mongodb://localhost:27017/ltcws',
     },
   },
   lockOpts: {
@@ -38,28 +38,30 @@ var config = {
     },
   },
   blockchainExplorerOpts: {
-    livenet: {
-      provider: 'insight',
-      url: 'https://insight.bitpay.com:443',
-    },
-    testnet: {
-      provider: 'insight',
-      url: 'https://test-insight.bitpay.com:443',
-      // url: 'http://localhost:3001',
+    defaultProvider: 'explorer',
+    explorer: {
       // Multiple servers (in priority order)
-      // url: ['http://a.b.c', 'https://test-insight.bitpay.com:443'],
+      // url: ['http://a.b.c', 'https://test-explorer.openwalletstack.com:443'],
+      livenet: {
+        url: 'http://ltc.owstack.org:3001',
+        apiPrefix: '/explorer-api'
+      },
+      testnet: {
+        url: 'https://test-insight.bitpay.com',
+        apiPrefix: '/api'
+      },
     },
   },
   pushNotificationsOpts: {
     templatePath: './lib/templates',
     defaultLanguage: 'en',
-    defaultUnit: 'btc',
+    defaultUnit: 'ltc',
     subjectPrefix: '',
     pushServerUrl: 'https://fcm.googleapis.com/fcm',
     authorizationKey: '',
   },
   fiatRateServiceOpts: {
-    defaultProvider: 'BitPay',
+    defaultProvider: 'Bitstamp',
     fetchInterval: 60, // in minutes
   },
   // To use email notifications uncomment this:
@@ -68,13 +70,13 @@ var config = {
   //  port: 25,
   //  ignoreTLS: true,
   //  subjectPrefix: '[Wallet Service]',
-  //  from: 'wallet-service@bitcore.io',
+  //  from: 'wallet-service@ltc.io',
   //  templatePath: './lib/templates',
   //  defaultLanguage: 'en',
-  //  defaultUnit: 'btc',
+  //  defaultUnit: 'ltc',
   //  publicTxUrlTemplate: {
-  //    livenet: 'https://insight.bitpay.com/tx/{{txid}}',
-  //    testnet: 'https://test-insight.bitpay.com/tx/{{txid}}',
+  //    'livenet': 'https://explorer.openwalletstack.com/tx/{{txid}}',
+  //    'testnet': 'https://test-explorer.openwalletstack.com/tx/{{txid}}',
   //  },
   //},
   //

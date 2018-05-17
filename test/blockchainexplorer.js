@@ -5,13 +5,14 @@ var chai = require('chai');
 var sinon = require('sinon');
 var should = chai.should();
 var BlockchainExplorer = require('../lib/blockchainexplorer');
+var Constants = require('../lib/common/constants');
 
 describe('Blockchain explorer', function() {
   describe('#constructor', function() {
     it('should return a blockchain explorer with basic methods', function() {
       var exp = new BlockchainExplorer({
-        provider: 'insight',
-        network: 'testnet',
+        provider: 'explorer',
+        network: Constants.TESTNET,
       });
       should.exist(exp);
       exp.should.respondTo('broadcast');
@@ -21,8 +22,8 @@ describe('Blockchain explorer', function() {
       exp.should.respondTo('estimateFee');
       exp.should.respondTo('initSocket');
       var exp = new BlockchainExplorer({
-        provider: 'insight',
-        network: 'livenet',
+        provider: 'explorer',
+        network: Constants.LIVENET,
       });
       should.exist(exp);
     });

@@ -12,7 +12,7 @@ var tingodb = require('tingodb')({
   memStore: true
 });
 
-var Bitcore = require('bitcore-lib');
+var ltcLib = require('@owstack/ltc-lib');
 
 var Common = require('../../lib/common');
 var Utils = Common.Utils;
@@ -30,13 +30,13 @@ var useMongoDb = !!process.env.USE_MONGO_DB;
 
 var helpers = {};
 
-helpers.CLIENT_VERSION = 'bwc-2.0.0';
+helpers.CLIENT_VERSION = 'ltcwc-2.0.0';
 
 helpers.before = function(cb) {
   function getDb(cb) {
     if (useMongoDb) {
       var mongodb = require('mongodb');
-      mongodb.MongoClient.connect('mongodb://localhost:27017/bws_test', function(err, db) {
+      mongodb.MongoClient.connect('mongodb://localhost:27017/ltcws_test', function(err, db) {
         if (err) throw err;
         return cb(db);
       });
@@ -82,13 +82,13 @@ helpers.getStorage = function() {
 };
 
 helpers.signMessage = function(text, privKey) {
-  var priv = new Bitcore.PrivateKey(privKey);
+  var priv = new ltcLib.PrivateKey(privKey);
   var hash = Utils.hashMessage(text);
-  return Bitcore.crypto.ECDSA.sign(hash, priv, 'little').toString();
+  return ltcLib.crypto.ECDSA.sign(hash, priv, 'little').toString();
 };
 
 helpers.signRequestPubKey = function(requestPubKey, xPrivKey) {
-  var priv = new Bitcore.HDPrivateKey(xPrivKey).deriveChild(Constants.PATHS.REQUEST_KEY_AUTH).privateKey;
+  var priv = new ltcLib.HDPrivateKey(xPrivKey).deriveChild(Constants.PATHS.REQUEST_KEY_AUTH).privateKey;
   return helpers.signMessage(requestPubKey, priv);
 };
 
@@ -110,19 +110,19 @@ helpers.getAuthServer = function(copayerId, cb) {
 helpers._generateCopayersTestData = function(n) {
   console.log('var copayers = [');
   _.each(_.range(n), function(c) {
-    var xpriv = new Bitcore.HDPrivateKey();
-    var xpub = Bitcore.HDPublicKey(xpriv);
+    var xpriv = new ltcLib.HDPrivateKey();
+    var xpub = ltcLib.HDPublicKey(xpriv);
 
     var xpriv_45H = xpriv.deriveChild(45, true);
-    var xpub_45H = Bitcore.HDPublicKey(xpriv_45H);
+    var xpub_45H = ltcLib.HDPublicKey(xpriv_45H);
     var id45 = Copayer._xPubToCopayerId(xpub_45H.toString());
 
     var xpriv_44H_0H_0H = xpriv.deriveChild(44, true).deriveChild(0, true).deriveChild(0, true);
-    var xpub_44H_0H_0H = Bitcore.HDPublicKey(xpriv_44H_0H_0H);
+    var xpub_44H_0H_0H = ltcLib.HDPublicKey(xpriv_44H_0H_0H);
     var id44 = Copayer._xPubToCopayerId(xpub_44H_0H_0H.toString());
 
     var xpriv_1H = xpriv.deriveChild(1, true);
-    var xpub_1H = Bitcore.HDPublicKey(xpriv_1H);
+    var xpub_1H = ltcLib.HDPublicKey(xpriv_1H);
     var priv = xpriv_1H.deriveChild(0).privateKey;
     var pub = xpub_1H.deriveChild(0).publicKey;
 
@@ -202,14 +202,14 @@ helpers.createAndJoinWallet = function(m, n, opts, cb) {
 
 
 helpers.randomTXID = function() {
-  return Bitcore.crypto.Hash.sha256(new Buffer(Math.random() * 100000)).toString('hex');;
+  return ltcLib.crypto.Hash.sha256(new Buffer(Math.random() * 100000)).toString('hex');;
 };
 
-helpers.toSatoshi = function(btc) {
-  if (_.isArray(btc)) {
-    return _.map(btc, helpers.toSatoshi);
+helpers.toSatoshi = function(ltc) {
+  if (_.isArray(ltc)) {
+    return _.map(ltc, helpers.toSatoshi);
   } else {
-    return Utils.strip(btc * 1e8);
+    return Utils.strip(ltc * 1e8);
   }
 };
 
@@ -221,7 +221,7 @@ helpers._parseAmount = function(str) {
 
   if (_.isNumber(str)) str = str.toString();
 
-  var re = /^((?:\d+c)|u)?\s*([\d\.]+)\s*(btc|bit|sat)?$/;
+  var re = /^((?:\d+c)|u)?\s*([\d\.]+)\s*(ltc|bit|sat)?$/;
   var match = str.match(re);
 
   if (!match) throw new Error('Could not parse amount ' + str);
@@ -233,7 +233,7 @@ helpers._parseAmount = function(str) {
 
   switch (match[3]) {
     default:
-    case 'btc':
+    case 'ltc':
       result.amount = Utils.strip(+match[2] * 1e8);
       break;
     case 'bit':
@@ -277,10 +277,10 @@ helpers.stubUtxos = function(server, wallet, amounts, opts, cb) {
         var scriptPubKey;
         switch (wallet.addressType) {
           case Constants.SCRIPT_TYPES.P2SH:
-            scriptPubKey = Bitcore.Script.buildMultisigOut(address.publicKeys, wallet.m).toScriptHashOut();
+            scriptPubKey = ltcLib.Script.buildMultisigOut(address.publicKeys, wallet.m).toScriptHashOut();
             break;
           case Constants.SCRIPT_TYPES.P2PKH:
-            scriptPubKey = Bitcore.Script.buildPublicKeyHashOut(address.address);
+            scriptPubKey = ltcLib.Script.buildPublicKeyHashOut(address.address);
             break;
         }
         should.exist(scriptPubKey);
@@ -304,7 +304,7 @@ helpers.stubUtxos = function(server, wallet, amounts, opts, cb) {
 
       blockchainExplorer.getUtxos = function(addresses, cb) {
         var selected = _.filter(helpers._utxos, function(utxo) {
-          return _.contains(addresses, utxo.address);
+          return _.includes(addresses, utxo.address);
         });
         return cb(null, selected);
       };
@@ -350,7 +350,7 @@ helpers.stubHistory = function(txs) {
 
 helpers.stubFeeLevels = function(levels) {
   blockchainExplorer.estimateFee = function(nbBlocks, cb) {
-    var result = _.zipObject(_.map(_.pick(levels, nbBlocks), function(fee, n) {
+    var result = _.fromPairs(_.map(_.pick(levels, nbBlocks), function(fee, n) {
       return [+n, fee > 0 ? fee / 1e8 : fee];
     }));
     return cb(null, result);
@@ -359,7 +359,7 @@ helpers.stubFeeLevels = function(levels) {
 
 helpers.stubAddressActivity = function(activeAddresses) {
   blockchainExplorer.getAddressActivity = function(address, cb) {
-    return cb(null, _.contains(activeAddresses, address));
+    return cb(null, _.includes(activeAddresses, address));
   };
 };
 
@@ -370,7 +370,7 @@ helpers.clientSign = function(txp, derivedXPrivKey) {
   var privs = [];
   var derived = {};
 
-  var xpriv = new Bitcore.HDPrivateKey(derivedXPrivKey, txp.network);
+  var xpriv = new ltcLib.HDPrivateKey(derivedXPrivKey, txp.network);
 
   _.each(txp.inputs, function(i) {
     if (!derived[i.path]) {
@@ -379,7 +379,7 @@ helpers.clientSign = function(txp, derivedXPrivKey) {
     }
   });
 
-  var t = txp.getBitcoreTx();
+  var t = txp.getLtcTx();
 
   var signatures = _.map(privs, function(priv, i) {
     return t.getSignatures(priv);

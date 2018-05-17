@@ -2,11 +2,12 @@
 
 var should = require('chai').should();
 var proxyquire = require('proxyquire');
-var bitcore = require('bitcore-lib');
+var ltcLib = require('@owstack/ltc-lib');
 var sinon = require('sinon');
-var Service = require('../bitcorenode');
+var Service = require('../ltc-node');
+var Constants = require('../lib/common/constants');
 
-describe('Bitcore Node Service', function() {
+describe('ltcLib Node Service', function() {
   describe('#constructor', function() {
     it('https settings from node', function() {
       var node = {
@@ -26,7 +27,7 @@ describe('Bitcore Node Service', function() {
         key: 'key',
         cert: 'cert'
       });
-      service.bwsPort.should.equal(3232);
+      service.ltcwsPort.should.equal(3232);
       service.messageBrokerPort.should.equal(3380);
       service.lockerPort.should.equal(3231);
     });
@@ -46,7 +47,7 @@ describe('Bitcore Node Service', function() {
         key: 'key',
         cert: 'cert'
       });
-      service.bwsPort.should.equal(3232);
+      service.ltcwsPort.should.equal(3232);
       service.messageBrokerPort.should.equal(3380);
       service.lockerPort.should.equal(3231);
     });
@@ -54,18 +55,18 @@ describe('Bitcore Node Service', function() {
       var node = {};
       var options = {
         node: node,
-        bwsPort: 1000,
+        ltcwsPort: 1000,
         messageBrokerPort: 1001,
         lockerPort: 1002
       };
       var service = new Service(options);
-      service.bwsPort.should.equal(1000);
+      service.ltcwsPort.should.equal(1000);
       service.messageBrokerPort.should.equal(1001);
       service.lockerPort.should.equal(1002);
     });
   });
   describe('#readHttpsOptions', function() {
-    var TestService = proxyquire('../bitcorenode', {
+    var TestService = proxyquire('../ltc-node', {
       fs: {
         readFileSync: function(arg) {
           return arg;
@@ -94,49 +95,6 @@ describe('Bitcore Node Service', function() {
       serverOptions.ca[2].should.equal('CAroot');
     });
   });
-  describe('#_getConfiguration', function() {
-    it('will throw with an unknown network', function() {
-      var options = {
-        node: {
-          network: 'unknown'
-        }
-      };
-      var service = new Service(options);
-      (function() {
-        service._getConfiguration();
-      }).should.throw('Unknown network');
-    });
-    it('livenet local insight', function() {
-      var options = {
-        node: {
-          network: bitcore.Networks.livenet,
-          port: 3001
-        }
-      };
-      var service = new Service(options);
-      var config = service._getConfiguration();
-      config.blockchainExplorerOpts.livenet.should.deep.equal({
-        'apiPrefix': '/insight-api',
-        'provider': 'insight',
-        'url': 'http://localhost:3001'
-      });
-    });
-    it('testnet local insight', function() {
-      var options = {
-        node: {
-          network: bitcore.Networks.testnet,
-          port: 3001
-        }
-      };
-      var service = new Service(options);
-      var config = service._getConfiguration();
-      config.blockchainExplorerOpts.testnet.should.deep.equal({
-        'apiPrefix': '/insight-api',
-        'provider': 'insight',
-        'url': 'http://localhost:3001'
-      });
-    });
-  });
   describe('#_startWalletService', function() {
     it('error from express', function(done) {
       function TestExpressApp() {}
@@ -144,7 +102,7 @@ describe('Bitcore Node Service', function() {
       function TestWSApp() {}
       TestWSApp.prototype.start = sinon.stub().callsArg(2);
       var listen = sinon.stub().callsArg(1);
-      var TestService = proxyquire('../bitcorenode', {
+      var TestService = proxyquire('../ltc-node', {
         '../lib/expressapp': TestExpressApp,
         '../lib/wsapp': TestWSApp,
         'http': {
@@ -155,7 +113,7 @@ describe('Bitcore Node Service', function() {
       });
       var options = {
         node: {
-          bwsPort: 3232
+          ltcwsPort: 3232
         }
       };
       var service = new TestService(options);
@@ -174,7 +132,7 @@ describe('Bitcore Node Service', function() {
       function TestWSApp() {}
       TestWSApp.prototype.start = sinon.stub().callsArg(2);
       var listen = sinon.stub().callsArgWith(1, new Error('test'));
-      var TestService = proxyquire('../bitcorenode', {
+      var TestService = proxyquire('../ltc-node', {
         '../lib/expressapp': TestExpressApp,
         '../lib/wsapp': TestWSApp,
         'http': {
@@ -188,7 +146,7 @@ describe('Bitcore Node Service', function() {
       });
       var options = {
         node: {
-          bwsPort: 3232
+          ltcwsPort: 3232
         }
       };
       var service = new TestService(options);
@@ -215,7 +173,7 @@ describe('Bitcore Node Service', function() {
           listen: listen
         };
       };
-      var TestService = proxyquire('../bitcorenode', {
+      var TestService = proxyquire('../ltc-node', {
         '../lib/expressapp': TestExpressApp,
         '../lib/wsapp': TestWSApp,
         'https': {
@@ -225,7 +183,7 @@ describe('Bitcore Node Service', function() {
       var options = {
         node: {
           https: true,
-          bwsPort: 3232
+          ltcwsPort: 3232
         }
       };
       var service = new TestService(options);
@@ -239,19 +197,6 @@ describe('Bitcore Node Service', function() {
     });
   });
   describe('#start', function(done) {
-    it('error from configuration', function(done) {
-      var options = {
-        node: {}
-      };
-      var service = new Service(options);
-      service._getConfiguration = function() {
-        throw new Error('test');
-      };
-      service.start(function(err) {
-        err.message.should.equal('test');
-        done();
-      });
-    });
     it('error from blockchain monitor', function(done) {
       var app = {};
       function TestBlockchainMonitor() {}
@@ -260,7 +205,7 @@ describe('Bitcore Node Service', function() {
       TestLocker.prototype.listen = sinon.stub();
       function TestEmailService() {}
       TestEmailService.prototype.start = sinon.stub();
-      var TestService = proxyquire('../bitcorenode', {
+      var TestService = proxyquire('../ltc-node', {
         '../lib/blockchainmonitor': TestBlockchainMonitor,
         '../lib/emailservice': TestEmailService,
         'socket.io': sinon.stub().returns({
@@ -288,7 +233,7 @@ describe('Bitcore Node Service', function() {
       TestLocker.prototype.listen = sinon.stub();
       function TestEmailService() {}
       TestEmailService.prototype.start = sinon.stub().callsArgWith(1, new Error('test'));
-      var TestService = proxyquire('../bitcorenode', {
+      var TestService = proxyquire('../ltc-node', {
         '../lib/blockchainmonitor': TestBlockchainMonitor,
         '../lib/emailservice': TestEmailService,
         'socket.io': sinon.stub().returns({
@@ -303,7 +248,6 @@ describe('Bitcore Node Service', function() {
       service._getConfiguration = sinon.stub().returns({
         emailOpts: {}
       });
-      var config = {};
       service._startWalletService = sinon.stub().callsArg(1);
       service.start(function(err) {
         err.message.should.equal('test');

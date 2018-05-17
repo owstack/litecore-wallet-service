@@ -10,7 +10,7 @@ var log = require('npmlog');
 log.debug = log.verbose;
 log.level = 'info';
 
-var Bitcore = require('bitcore-lib');
+var ltcLib = require('@owstack/ltc-lib');
 
 var Common = require('../../lib/common');
 var Utils = Common.Utils;
@@ -44,30 +44,18 @@ describe('Wallet service', function() {
 
   describe('#getServiceVersion', function() {
     it('should get version from package', function() {
-      WalletService.getServiceVersion().should.equal('bws-' + require('../../package').version);
+      WalletService.getServiceVersion().should.equal('ltcws-' + require('../../package').version);
     });
   });
 
   describe('#getInstance', function() {
     it('should get server instance', function() {
       var server = WalletService.getInstance({
-        clientVersion: 'bwc-2.9.0',
+        clientVersion: 'ltcwc-2.9.0',
       });
-      server.clientVersion.should.equal('bwc-2.9.0');
+      server.clientVersion.should.equal('ltcwc-2.9.0');
     });
-    it('should not get server instance for BWC lower than v1.2', function() {
-      var err;
-      try {
-        var server = WalletService.getInstance({
-          clientVersion: 'bwc-1.1.99',
-        });
-      } catch (ex) {
-        err = ex;
-      }
-      should.exist(err);
-      err.code.should.equal('UPGRADE_NEEDED');
-    });
-    it('should get server instance for non-BWC clients', function() {
+    it('should get server instance for non-LTCWC clients', function() {
       var server = WalletService.getInstance({
         clientVersion: 'dummy-1.0.0',
       });
@@ -78,19 +66,6 @@ describe('Wallet service', function() {
   });
 
   describe('#getInstanceWithAuth', function() {
-    it('should not get server instance for BWC lower than v1.2', function(done) {
-      var server = WalletService.getInstanceWithAuth({
-        copayerId: '1234',
-        message: 'hello world',
-        signature: 'xxx',
-        clientVersion: 'bwc-1.1.99',
-      }, function(err, server) {
-        should.exist(err);
-        should.not.exist(server);
-        err.code.should.equal('UPGRADE_NEEDED');
-        done();
-      });
-    });
     it('should get server instance for existing copayer', function(done) {
       helpers.createAndJoinWallet(1, 2, function(s, wallet) {
         var xpriv = TestData.copayers[0].xPrivKey;
@@ -102,12 +77,13 @@ describe('Wallet service', function() {
           copayerId: wallet.copayers[0].id,
           message: 'hello world',
           signature: sig,
-          clientVersion: 'bwc-2.0.0',
+          clientVersion: 'ltcwc-2.0.0',
+          walletId: '123',
         }, function(err, server) {
           should.not.exist(err);
           server.walletId.should.equal(wallet.id);
           server.copayerId.should.equal(wallet.copayers[0].id);
-          server.clientVersion.should.equal('bwc-2.0.0');
+          server.clientVersion.should.equal('ltcwc-2.0.0');
           done();
         });
       });
@@ -136,6 +112,36 @@ describe('Wallet service', function() {
         }, function(err, server) {
           err.code.should.equal('NOT_AUTHORIZED');
           err.message.should.contain('Invalid signature');
+          done();
+        });
+      });
+    });
+
+    it('should get server instance for support staff', function(done) {
+      helpers.createAndJoinWallet(1, 1, function(s, wallet) {
+        var collections = require('../../lib/storage').collections;
+        s.storage.db.collection(collections.COPAYERS_LOOKUP).update({
+          copayerId: wallet.copayers[0].id
+        }, {
+          $set: {
+            isSupportStaff: true
+          }
+        });
+
+        var xpriv = TestData.copayers[0].xPrivKey;
+        var priv = TestData.copayers[0].privKey_1H_0;
+
+        var sig = helpers.signMessage('hello world', priv);
+
+        WalletService.getInstanceWithAuth({
+          copayerId: wallet.copayers[0].id,
+          message: 'hello world',
+          signature: sig,
+          walletId: '123',
+        }, function(err, server) {
+          should.not.exist(err);
+          server.walletId.should.equal('123');
+          server.copayerId.should.equal(wallet.copayers[0].id);
           done();
         });
       });
@@ -839,7 +845,7 @@ describe('Wallet service', function() {
         helpers.stubUtxos(server, wallet, [1, 2], function() {
           var txOpts = {
             outputs: [{
-              toAddress: '18PzpUFkFZE8zKWUPvfykkTxmB9oMR8qP7',
+              toAddress: 'LW2DcC8tHkjhKVXUaBwCiBAuHida4mwYaK',
               amount: 0.1e8,
             }],
             feePerKb: 100e2,
@@ -903,7 +909,7 @@ describe('Wallet service', function() {
             helpers.stubUtxos(server2, wallet2, [1, 2, 3], function() {
               var txOpts = {
                 outputs: [{
-                  toAddress: '18PzpUFkFZE8zKWUPvfykkTxmB9oMR8qP7',
+                  toAddress: 'LW2DcC8tHkjhKVXUaBwCiBAuHida4mwYaK',
                   amount: 0.1e8,
                 }],
                 feePerKb: 100e2,
@@ -1018,7 +1024,7 @@ describe('Wallet service', function() {
         should.exist(status.wallet.copayers[0].requestPubKey);
         should.exist(status.wallet.copayers[0].customData);
         // Do not return other copayer's custom data
-        _.each(_.rest(status.wallet.copayers), function(copayer) {
+        _.each(_.tail(status.wallet.copayers), function(copayer) {
           should.not.exist(copayer.customData);
         });
         done();
@@ -1028,7 +1034,7 @@ describe('Wallet service', function() {
       helpers.stubUtxos(server, wallet, [1, 2], function() {
         var txOpts = {
           outputs: [{
-            toAddress: '18PzpUFkFZE8zKWUPvfykkTxmB9oMR8qP7',
+            toAddress: 'LW2DcC8tHkjhKVXUaBwCiBAuHida4mwYaK',
             amount: 0.8e8
           }],
           feePerKb: 100e2
@@ -1107,7 +1113,7 @@ describe('Wallet service', function() {
           should.not.exist(err);
           should.exist(address);
           address.walletId.should.equal(wallet.id);
-          address.network.should.equal('livenet');
+          address.network.should.equal(Constants.LIVENET);
           address.address.should.equal('3BVJZ4CYzeTtawDtgwHvWV5jbvnXtYe97i');
           address.isChange.should.be.false;
           address.path.should.equal('m/2147483647/0/0');
@@ -1145,13 +1151,13 @@ describe('Wallet service', function() {
         async.mapSeries(_.range(N), function(i, cb) {
           server.createAddress({}, cb);
         }, function(err, addresses) {
-          var x = _.pluck(addresses, 'path');
+          var x = _.map(addresses, 'path');
           addresses.length.should.equal(N);
           _.each(_.range(N), function(i) {
             addresses[i].path.should.equal('m/2147483647/0/' + i);
           });
           // No two identical addresses
-          _.uniq(_.pluck(addresses, 'address')).length.should.equal(N);
+          _.uniq(_.map(addresses, 'address')).length.should.equal(N);
           done();
         });
       });
@@ -1171,7 +1177,7 @@ describe('Wallet service', function() {
           should.not.exist(err);
           should.exist(address);
           address.walletId.should.equal(wallet.id);
-          address.network.should.equal('livenet');
+          address.network.should.equal(Constants.LIVENET);
           address.address.should.equal('36q2G5FMGvJbPgAVEaiyAsFGmpkhPKwk2r');
           address.isChange.should.be.false;
           address.path.should.equal('m/0/0');
@@ -1198,7 +1204,7 @@ describe('Wallet service', function() {
             addresses[i].path.should.equal('m/0/' + i);
           });
           // No two identical addresses
-          _.uniq(_.pluck(addresses, 'address')).length.should.equal(N);
+          _.uniq(_.map(addresses, 'address')).length.should.equal(N);
           done();
         });
       });
@@ -1238,8 +1244,8 @@ describe('Wallet service', function() {
           should.not.exist(err);
           should.exist(address);
           address.walletId.should.equal(wallet.id);
-          address.network.should.equal('livenet');
-          address.address.should.equal('1L3z9LPd861FWQhf3vDn89Fnc9dkdBo2CG');
+          address.network.should.equal(Constants.LIVENET);
+          address.address.should.equal('LeGwQYhTCkFJmDPpE4D5QAKYpN12mETsCn');
           address.isChange.should.be.false;
           address.path.should.equal('m/0/0');
           address.type.should.equal('P2PKH');
@@ -1266,7 +1272,7 @@ describe('Wallet service', function() {
             addresses[i].path.should.equal('m/0/' + i);
           });
           // No two identical addresses
-          _.uniq(_.pluck(addresses, 'address')).length.should.equal(N);
+          _.uniq(_.map(addresses, 'address')).length.should.equal(N);
           done();
         });
       });
@@ -1292,7 +1298,7 @@ describe('Wallet service', function() {
               address.path.should.equal('m/0/2');
 
               helpers.stubAddressActivity([
-                '1GdXraZ1gtoVAvBh49D4hK9xLm6SKgesoE', // m/0/2
+                'LarV7nrqmZ3YRisrEHCMyLDiYyTiTVshXK', // m/0/2
               ]);
               server.createAddress({}, function(err, address) {
                 should.not.exist(err);
@@ -1528,7 +1534,7 @@ describe('Wallet service', function() {
           should.not.exist(err);
           should.exist(utxos);
           utxos.length.should.equal(2);
-          _.sum(utxos, 'satoshis').should.equal(3 * 1e8);
+          _.sumBy(utxos, 'satoshis').should.equal(3 * 1e8);
           server.getMainAddresses({}, function(err, addresses) {
             var utxo = utxos[0];
             var address = _.find(addresses, {
@@ -1544,9 +1550,9 @@ describe('Wallet service', function() {
     });
     it('should get UTXOs for specific addresses', function(done) {
       helpers.stubUtxos(server, wallet, [1, 2, 3], function(utxos) {
-        _.uniq(utxos, 'address').length.should.be.above(1);
+        _.uniqBy(utxos, 'address').length.should.be.above(1);
         var address = utxos[0].address;
-        var amount = _.sum(_.filter(utxos, {
+        var amount = _.sumBy(_.filter(utxos, {
           address: address
         }), 'satoshis');
         server.getUtxos({
@@ -1554,7 +1560,7 @@ describe('Wallet service', function() {
         }, function(err, utxos) {
           should.not.exist(err);
           should.exist(utxos);
-          _.sum(utxos, 'satoshis').should.equal(amount);
+          _.sumBy(utxos, 'satoshis').should.equal(amount);
           done();
         });
       });
@@ -1563,7 +1569,7 @@ describe('Wallet service', function() {
       helpers.stubUtxos(server, wallet, [1, 1], function() {
         var txOpts = {
           outputs: [{
-            toAddress: '18PzpUFkFZE8zKWUPvfykkTxmB9oMR8qP7',
+            toAddress: 'LW2DcC8tHkjhKVXUaBwCiBAuHida4mwYaK',
             amount: 1e8,
           }],
           feePerKb: 100e2,
@@ -1600,7 +1606,7 @@ describe('Wallet service', function() {
     };
 
     beforeEach(function() {
-      reqPrivKey = new Bitcore.PrivateKey();
+      reqPrivKey = new ltcLib.PrivateKey();
       var requestPubKey = reqPrivKey.toPublicKey();
 
       var xPrivKey = TestData.copayers[0].xPrivKey_44H_0H_0H;
@@ -1661,7 +1667,7 @@ describe('Wallet service', function() {
           should.not.exist(err);
           server.getBalance(res.wallet.walletId, function(err, bal) {
             should.not.exist(err);
-            var privKey = new Bitcore.PrivateKey();
+            var privKey = new ltcLib.PrivateKey();
             (getAuthServer(opts.copayerId, privKey, function(err, server2) {
               err.code.should.equal('NOT_AUTHORIZED');
               done();
@@ -1676,7 +1682,7 @@ describe('Wallet service', function() {
           getAuthServer(opts.copayerId, reqPrivKey, function(err, server2) {
             var txOpts = {
               outputs: [{
-                toAddress: '18PzpUFkFZE8zKWUPvfykkTxmB9oMR8qP7',
+                toAddress: 'LW2DcC8tHkjhKVXUaBwCiBAuHida4mwYaK',
                 amount: 0.8e8
               }],
               feePerKb: 100e2
@@ -1724,7 +1730,7 @@ describe('Wallet service', function() {
           getAuthServer(opts.copayerId, reqPrivKey, function(err, server2) {
             var txOpts = {
               outputs: [{
-                toAddress: '18PzpUFkFZE8zKWUPvfykkTxmB9oMR8qP7',
+                toAddress: 'LW2DcC8tHkjhKVXUaBwCiBAuHida4mwYaK',
                 amount: 0.8e8
               }],
               feePerKb: 100e2,
@@ -1772,8 +1778,8 @@ describe('Wallet service', function() {
           balance.byAddress[1].amount.should.equal(helpers.toSatoshi(2));
           server.getMainAddresses({}, function(err, addresses) {
             should.not.exist(err);
-            var addresses = _.uniq(_.pluck(addresses, 'address'));
-            _.intersection(addresses, _.pluck(balance.byAddress, 'address')).length.should.equal(2);
+            var addresses = _.uniq(_.map(addresses, 'address'));
+            _.intersection(addresses, _.map(balance.byAddress, 'address')).length.should.equal(2);
             done();
           });
         });
@@ -2190,7 +2196,7 @@ describe('Wallet service', function() {
       });
       server.getFeeLevels({}, function(err, fees) {
         should.not.exist(err);
-        fees = _.zipObject(_.map(fees, function(item) {
+        fees = _.fromPairs(_.map(fees, function(item) {
           return [item.level, item];
         }));
         fees.urgent.feePerKb.should.equal(60000);
@@ -2214,10 +2220,10 @@ describe('Wallet service', function() {
       blockchainExplorer.estimateFee = sinon.stub().yields('dummy error');
       server.getFeeLevels({}, function(err, fees) {
         should.not.exist(err);
-        fees = _.zipObject(_.map(fees, function(item) {
+        fees = _.fromPairs(_.map(fees, function(item) {
           return [item.level, item.feePerKb];
         }));
-        var defaults = _.zipObject(_.map(Defaults.FEE_LEVELS, function(item) {
+        var defaults = _.fromPairs(_.map(Defaults.FEE_LEVELS, function(item) {
           return [item.name, item.defaultValue];
         }));
         fees.priority.should.equal(defaults.priority);
@@ -2236,7 +2242,7 @@ describe('Wallet service', function() {
       });
       server.getFeeLevels({}, function(err, fees) {
         should.not.exist(err);
-        fees = _.zipObject(_.map(fees, function(item) {
+        fees = _.fromPairs(_.map(fees, function(item) {
           return [item.level, item];
         }));
         fees.priority.feePerKb.should.equal(18000);
@@ -2264,7 +2270,7 @@ describe('Wallet service', function() {
       });
       server.getFeeLevels({}, function(err, fees) {
         should.not.exist(err);
-        fees = _.zipObject(_.map(fees, function(item) {
+        fees = _.fromPairs(_.map(fees, function(item) {
           return [item.level, item];
         }));
 
@@ -2293,7 +2299,7 @@ describe('Wallet service', function() {
       });
       server.getFeeLevels({}, function(err, fees) {
         should.not.exist(err);
-        fees = _.zipObject(_.map(fees, function(item) {
+        fees = _.fromPairs(_.map(fees, function(item) {
           return [item.level, item];
         }));
 
@@ -2366,7 +2372,7 @@ describe('Wallet service', function() {
           helpers.getAuthServer(result.copayerId, function(server, wallet) {
             var txOpts = {
               outputs: [{
-                toAddress: '18PzpUFkFZE8zKWUPvfykkTxmB9oMR8qP7',
+                toAddress: 'LW2DcC8tHkjhKVXUaBwCiBAuHida4mwYaK',
                 amount: 0.8e8
               }],
               feePerKb: 100e2
@@ -2398,7 +2404,7 @@ describe('Wallet service', function() {
         helpers.stubUtxos(server, wallet, [1, 2], function() {
           var txOpts = {
             outputs: [{
-              toAddress: '18PzpUFkFZE8zKWUPvfykkTxmB9oMR8qP7',
+              toAddress: 'LW2DcC8tHkjhKVXUaBwCiBAuHida4mwYaK',
               amount: 0.8 * 1e8,
             }],
             message: 'some message',
@@ -2481,7 +2487,7 @@ describe('Wallet service', function() {
         it('should fail to create tx for invalid amount', function(done) {
           var txOpts = {
             outputs: [{
-              toAddress: '18PzpUFkFZE8zKWUPvfykkTxmB9oMR8qP7',
+              toAddress: 'LW2DcC8tHkjhKVXUaBwCiBAuHida4mwYaK',
               amount: 0,
             }],
             feePerKb: 100e2,
@@ -2497,7 +2503,7 @@ describe('Wallet service', function() {
           helpers.stubUtxos(server, wallet, 2, function() {
             var txOpts = {
               outputs: [{
-                toAddress: '18PzpUFkFZE8zKWUPvfykkTxmB9oMR8qP7',
+                toAddress: 'LW2DcC8tHkjhKVXUaBwCiBAuHida4mwYaK',
                 amount: 1e8,
               }],
               feeLevel: 'normal',
@@ -2518,7 +2524,7 @@ describe('Wallet service', function() {
               var inputs = [utxos[0], utxos[2]];
               var txOpts = {
                 outputs: [{
-                  toAddress: '18PzpUFkFZE8zKWUPvfykkTxmB9oMR8qP7',
+                  toAddress: 'LW2DcC8tHkjhKVXUaBwCiBAuHida4mwYaK',
                   amount: 2.5e8,
                 }],
                 feePerKb: 100e2,
@@ -2528,7 +2534,7 @@ describe('Wallet service', function() {
                 should.not.exist(err);
                 should.exist(tx);
                 tx.inputs.length.should.equal(2);
-                var txids = _.pluck(tx.inputs, 'txid');
+                var txids = _.map(tx.inputs, 'txid');
                 txids.should.contain(utxos[0].txid);
                 txids.should.contain(utxos[2].txid);
                 done();
@@ -2540,7 +2546,7 @@ describe('Wallet service', function() {
           helpers.stubUtxos(server, wallet, [1, 2], function(utxos) {
             var txOpts = {
               outputs: [{
-                toAddress: '18PzpUFkFZE8zKWUPvfykkTxmB9oMR8qP7',
+                toAddress: 'LW2DcC8tHkjhKVXUaBwCiBAuHida4mwYaK',
                 amount: 0.8e8,
               }],
               feePerKb: 100e2,
@@ -2549,7 +2555,7 @@ describe('Wallet service', function() {
             server.createTx(txOpts, function(err, tx) {
               should.not.exist(err);
               should.exist(tx);
-              var t = tx.getBitcoreTx();
+              var t = tx.getLtcTx();
               t.getChangeOutput().script.toAddress().toString().should.equal(txOpts.changeAddress);
               done();
             });
@@ -2559,7 +2565,7 @@ describe('Wallet service', function() {
           helpers.stubUtxos(server, wallet, [1, 2], function(utxos) {
             var txOpts = {
               outputs: [{
-                toAddress: '18PzpUFkFZE8zKWUPvfykkTxmB9oMR8qP7',
+                toAddress: 'LW2DcC8tHkjhKVXUaBwCiBAuHida4mwYaK',
                 amount: 0.8e8,
               }],
               inputs: utxos,
@@ -2571,7 +2577,7 @@ describe('Wallet service', function() {
               tx.amount.should.equal(helpers.toSatoshi(0.8));
               should.not.exist(tx.feePerKb);
               tx.fee.should.equal(1000e2);
-              var t = tx.getBitcoreTx();
+              var t = tx.getLtcTx();
               t.getFee().should.equal(1000e2);
               t.getChangeOutput().satoshis.should.equal(3e8 - 0.8e8 - 1000e2);
               done();
@@ -2586,7 +2592,7 @@ describe('Wallet service', function() {
             var txOpts = {
               txProposalId: '123',
               outputs: [{
-                toAddress: '18PzpUFkFZE8zKWUPvfykkTxmB9oMR8qP7',
+                toAddress: 'LW2DcC8tHkjhKVXUaBwCiBAuHida4mwYaK',
                 amount: 1e8,
               }],
               feePerKb: 100e2,
@@ -2604,7 +2610,7 @@ describe('Wallet service', function() {
             var txOpts = {
               txProposalId: '123',
               outputs: [{
-                toAddress: '18PzpUFkFZE8zKWUPvfykkTxmB9oMR8qP7',
+                toAddress: 'LW2DcC8tHkjhKVXUaBwCiBAuHida4mwYaK',
                 amount: 1e8,
               }],
               feePerKb: 100e2,
@@ -2632,7 +2638,7 @@ describe('Wallet service', function() {
             var txOpts = {
               txProposalId: '123',
               outputs: [{
-                toAddress: '18PzpUFkFZE8zKWUPvfykkTxmB9oMR8qP7',
+                toAddress: 'LW2DcC8tHkjhKVXUaBwCiBAuHida4mwYaK',
                 amount: 1e8,
               }],
               feePerKb: 100e2,
@@ -2667,7 +2673,7 @@ describe('Wallet service', function() {
           helpers.stubUtxos(server, wallet, [1, 2], function() {
             var txOpts = {
               outputs: [{
-                toAddress: '18PzpUFkFZE8zKWUPvfykkTxmB9oMR8qP7',
+                toAddress: 'LW2DcC8tHkjhKVXUaBwCiBAuHida4mwYaK',
                 amount: 0.8 * 1e8,
               }],
               feePerKb: 100e2,
@@ -2694,7 +2700,7 @@ describe('Wallet service', function() {
           helpers.stubUtxos(server, wallet, [1, 2], function() {
             var txOpts = {
               outputs: [{
-                toAddress: '18PzpUFkFZE8zKWUPvfykkTxmB9oMR8qP7',
+                toAddress: 'LW2DcC8tHkjhKVXUaBwCiBAuHida4mwYaK',
                 amount: 0.8 * 1e8,
               }],
               feePerKb: 100e2,
@@ -2720,7 +2726,7 @@ describe('Wallet service', function() {
           helpers.stubUtxos(server, wallet, [1, 2], function() {
             var txOpts = {
               outputs: [{
-                toAddress: '18PzpUFkFZE8zKWUPvfykkTxmB9oMR8qP7',
+                toAddress: 'LW2DcC8tHkjhKVXUaBwCiBAuHida4mwYaK',
                 amount: 0.8 * 1e8,
               }],
               feePerKb: 100e2,
@@ -2731,7 +2737,7 @@ describe('Wallet service', function() {
               should.exist(txp);
               server.getNotifications({}, function(err, notifications) {
                 should.not.exist(err);
-                _.pluck(notifications, 'type').should.not.contain('NewTxProposal');
+                _.map(notifications, 'type').should.not.contain('NewTxProposal');
                 var publishOpts = helpers.getProposalSignatureOpts(txp, TestData.copayers[0].privKey_1H_0);
                 server.publishTx(publishOpts, function(err) {
                   should.not.exist(err);
@@ -2770,7 +2776,7 @@ describe('Wallet service', function() {
           helpers.stubUtxos(server, wallet, [1, 2], function() {
             var txOpts = {
               outputs: [{
-                toAddress: '18PzpUFkFZE8zKWUPvfykkTxmB9oMR8qP7',
+                toAddress: 'LW2DcC8tHkjhKVXUaBwCiBAuHida4mwYaK',
                 amount: 0.8 * 1e8,
               }],
               feePerKb: 100e2,
@@ -2794,7 +2800,7 @@ describe('Wallet service', function() {
           helpers.stubUtxos(server, wallet, [1, 2], function() {
             var txOpts = {
               outputs: [{
-                toAddress: '18PzpUFkFZE8zKWUPvfykkTxmB9oMR8qP7',
+                toAddress: 'LW2DcC8tHkjhKVXUaBwCiBAuHida4mwYaK',
                 amount: 0.8 * 1e8,
               }],
               feePerKb: 100e2,
@@ -2821,7 +2827,7 @@ describe('Wallet service', function() {
           var txp1, txp2;
           var txOpts = {
             outputs: [{
-              toAddress: '18PzpUFkFZE8zKWUPvfykkTxmB9oMR8qP7',
+              toAddress: 'LW2DcC8tHkjhKVXUaBwCiBAuHida4mwYaK',
               amount: 0.8 * 1e8,
             }],
             message: 'some message',
@@ -2889,7 +2895,7 @@ describe('Wallet service', function() {
           var txp1, txp2;
           var txOpts = {
             outputs: [{
-              toAddress: '18PzpUFkFZE8zKWUPvfykkTxmB9oMR8qP7',
+              toAddress: 'LW2DcC8tHkjhKVXUaBwCiBAuHida4mwYaK',
               amount: 0.8 * 1e8,
             }],
             message: 'some message',
@@ -2963,7 +2969,7 @@ describe('Wallet service', function() {
           helpers.stubUtxos(server, wallet, 2, function() {
             var txOpts = {
               outputs: [{
-                toAddress: '18PzpUFkFZE8zKWUPvfykkTxmB9oMR8qP7',
+                toAddress: 'LW2DcC8tHkjhKVXUaBwCiBAuHida4mwYaK',
                 amount: 1e8,
               }],
               feeLevel: 'economy',
@@ -2981,7 +2987,7 @@ describe('Wallet service', function() {
           helpers.stubUtxos(server, wallet, 2, function() {
             var txOpts = {
               outputs: [{
-                toAddress: '18PzpUFkFZE8zKWUPvfykkTxmB9oMR8qP7',
+                toAddress: 'LW2DcC8tHkjhKVXUaBwCiBAuHida4mwYaK',
                 amount: 1e8,
               }],
               feeLevel: 'madeUpLevel',
@@ -3004,7 +3010,7 @@ describe('Wallet service', function() {
           helpers.stubUtxos(server, wallet, 2, function() {
             var txOpts = {
               outputs: [{
-                toAddress: '18PzpUFkFZE8zKWUPvfykkTxmB9oMR8qP7',
+                toAddress: 'LW2DcC8tHkjhKVXUaBwCiBAuHida4mwYaK',
                 amount: 1e8,
               }],
             };
@@ -3022,7 +3028,7 @@ describe('Wallet service', function() {
         helpers.stubUtxos(server, wallet, [1, 2], function() {
           var txOpts = {
             outputs: [{
-              toAddress: '18PzpUFkFZE8zKWUPvfykkTxmB9oMR8qP7',
+              toAddress: 'LW2DcC8tHkjhKVXUaBwCiBAuHida4mwYaK',
               amount: 0.8e8,
             }],
             feePerKb: 100e2,
@@ -3044,7 +3050,7 @@ describe('Wallet service', function() {
           var max = 3e8 - 7000; // Fees for this tx at 100bits/kB = 7000 sat
           var txOpts = {
             outputs: [{
-              toAddress: '18PzpUFkFZE8zKWUPvfykkTxmB9oMR8qP7',
+              toAddress: 'LW2DcC8tHkjhKVXUaBwCiBAuHida4mwYaK',
               amount: max,
             }],
             feePerKb: 100e2,
@@ -3052,7 +3058,7 @@ describe('Wallet service', function() {
           server.createTx(txOpts, function(err, txp) {
             should.not.exist(err);
             should.exist(txp);
-            var t = txp.getBitcoreTx().toObject();
+            var t = txp.getLtcTx().toObject();
             t.outputs.length.should.equal(1);
             t.outputs[0].satoshis.should.equal(max);
             done();
@@ -3065,7 +3071,7 @@ describe('Wallet service', function() {
           should.not.exist(err);
           var txOpts = {
             outputs: [{
-              toAddress: '18PzpUFkFZE8zKWUPvfykkTxmB9oMR8qP7',
+              toAddress: 'LW2DcC8tHkjhKVXUaBwCiBAuHida4mwYaK',
               amount: 1e8
             }],
             feePerKb: 100e2,
@@ -3077,16 +3083,16 @@ describe('Wallet service', function() {
           });
         });
       });
-      it('should fail gracefully when bitcore throws exception on raw tx creation', function(done) {
+      it('should fail gracefully when ltc throws exception on raw tx creation', function(done) {
         helpers.stubUtxos(server, wallet, 1, function() {
-          var bitcoreStub = sinon.stub(Bitcore, 'Transaction');
-          bitcoreStub.throws({
+          var ltcStub = sinon.stub(ltcLib, 'Transaction');
+          ltcStub.throws({
             name: 'dummy',
             message: 'dummy exception'
           });
           var txOpts = {
             outputs: [{
-              toAddress: '18PzpUFkFZE8zKWUPvfykkTxmB9oMR8qP7',
+              toAddress: 'LW2DcC8tHkjhKVXUaBwCiBAuHida4mwYaK',
               amount: 0.5e8,
             }],
             feePerKb: 100e2,
@@ -3094,7 +3100,7 @@ describe('Wallet service', function() {
           server.createTx(txOpts, function(err, tx) {
             should.exist(err);
             err.message.should.equal('dummy exception');
-            bitcoreStub.restore();
+            ltcStub.restore();
             done();
           });
         });
@@ -3105,7 +3111,7 @@ describe('Wallet service', function() {
         helpers.stubUtxos(server, wallet, _.range(1, 10, 0), function() {
           var txOpts = {
             outputs: [{
-              toAddress: '18PzpUFkFZE8zKWUPvfykkTxmB9oMR8qP7',
+              toAddress: 'LW2DcC8tHkjhKVXUaBwCiBAuHida4mwYaK',
               amount: 8e8,
             }],
             feePerKb: 100e2,
@@ -3122,7 +3128,7 @@ describe('Wallet service', function() {
         helpers.stubUtxos(server, wallet, [1, 1], function() {
           var txOpts = {
             outputs: [{
-              toAddress: '18PzpUFkFZE8zKWUPvfykkTxmB9oMR8qP7',
+              toAddress: 'LW2DcC8tHkjhKVXUaBwCiBAuHida4mwYaK',
               amount: 1.1e8,
             }],
             feePerKb: 100e2,
@@ -3147,7 +3153,7 @@ describe('Wallet service', function() {
         helpers.stubUtxos(server, wallet, 1, function() {
           var txOpts = {
             outputs: [{
-              toAddress: '18PzpUFkFZE8zKWUPvfykkTxmB9oMR8qP7',
+              toAddress: 'LW2DcC8tHkjhKVXUaBwCiBAuHida4mwYaK',
               amount: 20e2,
             }],
             feePerKb: 100e2,
@@ -3167,7 +3173,7 @@ describe('Wallet service', function() {
 
           var txOpts = {
             outputs: [{
-              toAddress: '18PzpUFkFZE8zKWUPvfykkTxmB9oMR8qP7',
+              toAddress: 'LW2DcC8tHkjhKVXUaBwCiBAuHida4mwYaK',
               amount: amount,
             }],
             feePerKb: 100e2,
@@ -3175,9 +3181,9 @@ describe('Wallet service', function() {
           server.createTx(txOpts, function(err, tx) {
             should.not.exist(err);
             should.exist(tx);
-            var bitcoreTx = tx.getBitcoreTx();
-            bitcoreTx.outputs.length.should.equal(1);
-            bitcoreTx.outputs[0].satoshis.should.equal(tx.amount);
+            var ltcTx = tx.getLtcTx();
+            ltcTx.outputs.length.should.equal(1);
+            ltcTx.outputs[0].satoshis.should.equal(tx.amount);
             done();
           });
         });
@@ -3186,7 +3192,7 @@ describe('Wallet service', function() {
         helpers.stubUtxos(server, wallet, [1.1, 1.2, 1.3], function() {
           var txOpts = {
             outputs: [{
-              toAddress: '18PzpUFkFZE8zKWUPvfykkTxmB9oMR8qP7',
+              toAddress: 'LW2DcC8tHkjhKVXUaBwCiBAuHida4mwYaK',
               amount: 1.5e8,
             }],
             feePerKb: 100e2,
@@ -3214,7 +3220,7 @@ describe('Wallet service', function() {
         helpers.stubUtxos(server, wallet, [1.1, 1.2, 1.3], function() {
           var txOpts = {
             outputs: [{
-              toAddress: '18PzpUFkFZE8zKWUPvfykkTxmB9oMR8qP7',
+              toAddress: 'LW2DcC8tHkjhKVXUaBwCiBAuHida4mwYaK',
               amount: 1.5e8,
             }],
             feePerKb: 100e2,
@@ -3231,7 +3237,7 @@ describe('Wallet service', function() {
                 server.getBalance({}, function(err, balance) {
                   should.not.exist(err);
                   balance.totalAmount.should.equal(3.6e8);
-                  var amountInputs = _.sum(txs[0].inputs, 'satoshis');
+                  var amountInputs = _.sumBy(txs[0].inputs, 'satoshis');
                   balance.lockedAmount.should.equal(amountInputs);
                   balance.lockedAmount.should.be.below(balance.totalAmount);
                   balance.availableAmount.should.equal(balance.totalAmount - balance.lockedAmount);
@@ -3243,7 +3249,7 @@ describe('Wallet service', function() {
         });
       });
       it('should accept a tx proposal signed with a custom key', function(done) {
-        var reqPrivKey = new Bitcore.PrivateKey();
+        var reqPrivKey = new ltcLib.PrivateKey();
         var reqPubKey = reqPrivKey.toPublicKey().toString();
 
         var xPrivKey = TestData.copayers[0].xPrivKey_44H_0H_0H;
@@ -3260,7 +3266,7 @@ describe('Wallet service', function() {
           helpers.stubUtxos(server, wallet, [1, 2], function() {
             var txOpts = {
               outputs: [{
-                toAddress: '18PzpUFkFZE8zKWUPvfykkTxmB9oMR8qP7',
+                toAddress: 'LW2DcC8tHkjhKVXUaBwCiBAuHida4mwYaK',
                 amount: 0.8 * 1e8,
               }],
               message: 'some message',
@@ -3295,7 +3301,7 @@ describe('Wallet service', function() {
         helpers.stubUtxos(server, wallet, [1, 2], function() {
           var txOpts = {
             outputs: [{
-              toAddress: '18PzpUFkFZE8zKWUPvfykkTxmB9oMR8qP7',
+              toAddress: 'LW2DcC8tHkjhKVXUaBwCiBAuHida4mwYaK',
               amount: null,
             }],
             feePerKb: 10000,
@@ -3307,7 +3313,7 @@ describe('Wallet service', function() {
             should.not.exist(tx.changeAddress);
             tx.amount.should.equal(3e8 - tx.fee);
 
-            var t = tx.getBitcoreTx();
+            var t = tx.getLtcTx();
             t.getFee().should.equal(tx.fee);
             should.not.exist(t.getChangeOutput());
             t.toObject().inputs.length.should.equal(tx.inputs.length);
@@ -3321,7 +3327,7 @@ describe('Wallet service', function() {
           var txOpts = {
             outputs: _.times(30, function(i) {
               return {
-                toAddress: '18PzpUFkFZE8zKWUPvfykkTxmB9oMR8qP7',
+                toAddress: 'LW2DcC8tHkjhKVXUaBwCiBAuHida4mwYaK',
                 amount: (i + 1) * 100e2,
               };
             }),
@@ -3330,21 +3336,21 @@ describe('Wallet service', function() {
           server.createTx(txOpts, function(err, txp) {
             should.not.exist(err);
             should.exist(txp);
-            var t = txp.getBitcoreTx();
+            var t = txp.getLtcTx();
             var changeOutput = t.getChangeOutput().satoshis;
-            var outputs = _.without(_.pluck(t.outputs, 'satoshis'), changeOutput);
+            var outputs = _.without(_.map(t.outputs, 'satoshis'), changeOutput);
 
-            outputs.should.not.deep.equal(_.pluck(txOpts.outputs, 'amount'));
+            outputs.should.not.deep.equal(_.map(txOpts.outputs, 'amount'));
             txOpts.noShuffleOutputs = true;
             server.createTx(txOpts, function(err, txp) {
               should.not.exist(err);
               should.exist(txp);
 
-              t = txp.getBitcoreTx();
+              t = txp.getLtcTx();
               changeOutput = t.getChangeOutput().satoshis;
-              outputs = _.without(_.pluck(t.outputs, 'satoshis'), changeOutput);
+              outputs = _.without(_.map(t.outputs, 'satoshis'), changeOutput);
 
-              outputs.should.deep.equal(_.pluck(txOpts.outputs, 'amount'));
+              outputs.should.deep.equal(_.map(txOpts.outputs, 'amount'));
               done();
             });
           });
@@ -3375,7 +3381,7 @@ describe('Wallet service', function() {
         clock = sinon.useFakeTimers(Date.now(), 'Date');
         var txOpts = {
           outputs: [{
-            toAddress: '18PzpUFkFZE8zKWUPvfykkTxmB9oMR8qP7',
+            toAddress: 'LW2DcC8tHkjhKVXUaBwCiBAuHida4mwYaK',
             amount: 1e8,
           }],
           feePerKb: 100e2,
@@ -3462,7 +3468,7 @@ describe('Wallet service', function() {
         helpers.stubUtxos(server, wallet, [1.3, 'u2', 'u0.1', 1.2], function(utxos) {
           var txOpts = {
             outputs: [{
-              toAddress: '18PzpUFkFZE8zKWUPvfykkTxmB9oMR8qP7',
+              toAddress: 'LW2DcC8tHkjhKVXUaBwCiBAuHida4mwYaK',
               amount: 3e8
             }],
             feePerKb: 100e2,
@@ -3486,7 +3492,7 @@ describe('Wallet service', function() {
         helpers.stubUtxos(server, wallet, [1.3, 'u2', 'u0.1', 1.2], function(utxos) {
           var txOpts = {
             outputs: [{
-              toAddress: '18PzpUFkFZE8zKWUPvfykkTxmB9oMR8qP7',
+              toAddress: 'LW2DcC8tHkjhKVXUaBwCiBAuHida4mwYaK',
               amount: 1.4e8
             }],
             feePerKb: 100e2,
@@ -3513,7 +3519,7 @@ describe('Wallet service', function() {
         helpers.stubUtxos(server, wallet, [1, 2, 3], function(utxos) {
           var txOpts = {
             outputs: [{
-              toAddress: '18PzpUFkFZE8zKWUPvfykkTxmB9oMR8qP7',
+              toAddress: 'LW2DcC8tHkjhKVXUaBwCiBAuHida4mwYaK',
               amount: 3.5e8,
             }],
             feePerKb: 100e2,
@@ -3536,7 +3542,7 @@ describe('Wallet service', function() {
         helpers.stubUtxos(server, wallet, [1, '350bit', '100bit', '100bit', '100bit'], function() {
           var txOpts = {
             outputs: [{
-              toAddress: '18PzpUFkFZE8zKWUPvfykkTxmB9oMR8qP7',
+              toAddress: 'LW2DcC8tHkjhKVXUaBwCiBAuHida4mwYaK',
               amount: 200e2,
             }],
             feePerKb: 10e2,
@@ -3556,17 +3562,17 @@ describe('Wallet service', function() {
         helpers.stubUtxos(server, wallet, _.range(1, 31), function(utxos) {
           var txOpts = {
             outputs: [{
-              toAddress: '18PzpUFkFZE8zKWUPvfykkTxmB9oMR8qP7',
-              amount: _.sum(utxos, 'satoshis') - 0.5e8,
+              toAddress: 'LW2DcC8tHkjhKVXUaBwCiBAuHida4mwYaK',
+              amount: _.sumBy(utxos, 'satoshis') - 0.5e8,
             }],
             feePerKb: 100e2,
           };
           server.createTx(txOpts, function(err, txp) {
             should.not.exist(err);
             should.exist(txp);
-            var amounts = _.pluck(txp.inputs, 'satoshis');
+            var amounts = _.map(txp.inputs, 'satoshis');
             amounts.length.should.equal(30);
-            _.all(amounts, function(amount, i) {
+            _.every(amounts, function(amount, i) {
               if (i == 0) return true;
               return amount < amounts[i - 1];
             }).should.be.false;
@@ -3578,7 +3584,7 @@ describe('Wallet service', function() {
         helpers.stubUtxos(server, wallet, [1, 'u 350bit', '100bit', '100bit', '100bit'], function() {
           var txOpts = {
             outputs: [{
-              toAddress: '18PzpUFkFZE8zKWUPvfykkTxmB9oMR8qP7',
+              toAddress: 'LW2DcC8tHkjhKVXUaBwCiBAuHida4mwYaK',
               amount: 200e2,
             }],
             feePerKb: 10e2,
@@ -3597,7 +3603,7 @@ describe('Wallet service', function() {
         helpers.stubUtxos(server, wallet, [1, '800bit', '800bit', '800bit'], function() {
           var txOpts = {
             outputs: [{
-              toAddress: '18PzpUFkFZE8zKWUPvfykkTxmB9oMR8qP7',
+              toAddress: 'LW2DcC8tHkjhKVXUaBwCiBAuHida4mwYaK',
               amount: 2000e2,
             }],
             feePerKb: 10e2,
@@ -3606,7 +3612,7 @@ describe('Wallet service', function() {
             should.not.exist(err);
             should.exist(txp);
             txp.inputs.length.should.equal(3);
-            _.all(txp.inputs, function(input) {
+            _.every(txp.inputs, function(input) {
               return input == 100e2;
             });
             done();
@@ -3617,7 +3623,7 @@ describe('Wallet service', function() {
         helpers.stubUtxos(server, wallet, [3, 1, 2, '100bit', '100bit', '100bit'], function() {
           var txOpts = {
             outputs: [{
-              toAddress: '18PzpUFkFZE8zKWUPvfykkTxmB9oMR8qP7',
+              toAddress: 'LW2DcC8tHkjhKVXUaBwCiBAuHida4mwYaK',
               amount: 300e2,
             }],
             feePerKb: 10e2,
@@ -3639,7 +3645,7 @@ describe('Wallet service', function() {
         helpers.stubUtxos(server, wallet, [1, '605bit', '100bit', '100bit', '100bit'], function() {
           var txOpts = {
             outputs: [{
-              toAddress: '18PzpUFkFZE8zKWUPvfykkTxmB9oMR8qP7',
+              toAddress: 'LW2DcC8tHkjhKVXUaBwCiBAuHida4mwYaK',
               amount: 300e2,
             }],
             feePerKb: 1200e2,
@@ -3660,7 +3666,7 @@ describe('Wallet service', function() {
         })), function() {
           var txOpts = {
             outputs: [{
-              toAddress: '18PzpUFkFZE8zKWUPvfykkTxmB9oMR8qP7',
+              toAddress: 'LW2DcC8tHkjhKVXUaBwCiBAuHida4mwYaK',
               amount: 12000e2,
             }],
             feePerKb: 20e2,
@@ -3679,7 +3685,7 @@ describe('Wallet service', function() {
         helpers.stubUtxos(server, wallet, [9, 1, 1, 0.5, 0.2, 0.2, 0.2], function() {
           var txOpts = {
             outputs: [{
-              toAddress: '18PzpUFkFZE8zKWUPvfykkTxmB9oMR8qP7',
+              toAddress: 'LW2DcC8tHkjhKVXUaBwCiBAuHida4mwYaK',
               amount: 3e8,
             }],
             feePerKb: 10e2,
@@ -3702,7 +3708,7 @@ describe('Wallet service', function() {
         helpers.stubUtxos(server, wallet, [100].concat(_.range(1, 20, 0)), function() {
           var txOpts = {
             outputs: [{
-              toAddress: '18PzpUFkFZE8zKWUPvfykkTxmB9oMR8qP7',
+              toAddress: 'LW2DcC8tHkjhKVXUaBwCiBAuHida4mwYaK',
               amount: 15e8,
             }],
             feePerKb: 120e2,
@@ -3722,7 +3728,7 @@ describe('Wallet service', function() {
         helpers.stubUtxos(server, wallet, ['100bit', '100bit', '100bit'], function() {
           var txOpts = {
             outputs: [{
-              toAddress: '18PzpUFkFZE8zKWUPvfykkTxmB9oMR8qP7',
+              toAddress: 'LW2DcC8tHkjhKVXUaBwCiBAuHida4mwYaK',
               amount: 200e2,
             }],
             feePerKb: 80e2,
@@ -3744,7 +3750,7 @@ describe('Wallet service', function() {
         helpers.stubUtxos(server, wallet, ['100bit', '100bit', '100bit'], function() {
           var txOpts = {
             outputs: [{
-              toAddress: '18PzpUFkFZE8zKWUPvfykkTxmB9oMR8qP7',
+              toAddress: 'LW2DcC8tHkjhKVXUaBwCiBAuHida4mwYaK',
               amount: 400e2,
             }],
             feePerKb: 10e2,
@@ -3761,7 +3767,7 @@ describe('Wallet service', function() {
         helpers.stubUtxos(server, wallet, ['100bit', '100bit', '100bit'], function() {
           var txOpts = {
             outputs: [{
-              toAddress: '18PzpUFkFZE8zKWUPvfykkTxmB9oMR8qP7',
+              toAddress: 'LW2DcC8tHkjhKVXUaBwCiBAuHida4mwYaK',
               amount: 299e2,
             }],
             feePerKb: 10e2,
@@ -3780,7 +3786,7 @@ describe('Wallet service', function() {
         })), function() {
           var txOpts = {
             outputs: [{
-              toAddress: '18PzpUFkFZE8zKWUPvfykkTxmB9oMR8qP7',
+              toAddress: 'LW2DcC8tHkjhKVXUaBwCiBAuHida4mwYaK',
               amount: 1500e2,
             }],
             feePerKb: 10e2,
@@ -3788,7 +3794,7 @@ describe('Wallet service', function() {
           server.createTx(txOpts, function(err, txp) {
             should.not.exist(err);
             should.exist(txp);
-            _.all(txp.inputs, function(input) {
+            _.every(txp.inputs, function(input) {
               return input == 100e2;
             });
             done();
@@ -3796,10 +3802,10 @@ describe('Wallet service', function() {
         });
       });
       it('should select unconfirmed utxos if not enough confirmed utxos', function(done) {
-        helpers.stubUtxos(server, wallet, ['u 1btc', '0.5btc'], function() {
+        helpers.stubUtxos(server, wallet, ['u 1ltc', '0.5ltc'], function() {
           var txOpts = {
             outputs: [{
-              toAddress: '18PzpUFkFZE8zKWUPvfykkTxmB9oMR8qP7',
+              toAddress: 'LW2DcC8tHkjhKVXUaBwCiBAuHida4mwYaK',
               amount: 0.8e8,
             }],
             feePerKb: 100e2,
@@ -3819,7 +3825,7 @@ describe('Wallet service', function() {
         })), function() {
           var txOpts = {
             outputs: [{
-              toAddress: '18PzpUFkFZE8zKWUPvfykkTxmB9oMR8qP7',
+              toAddress: 'LW2DcC8tHkjhKVXUaBwCiBAuHida4mwYaK',
               amount: 200e2,
             }],
             feePerKb: 90e2,
@@ -3838,7 +3844,7 @@ describe('Wallet service', function() {
         })), function() {
           var txOpts = {
             outputs: [{
-              toAddress: '18PzpUFkFZE8zKWUPvfykkTxmB9oMR8qP7',
+              toAddress: 'LW2DcC8tHkjhKVXUaBwCiBAuHida4mwYaK',
               amount: 200e2,
             }],
             feePerKb: 10e2,
@@ -3855,7 +3861,7 @@ describe('Wallet service', function() {
         helpers.stubUtxos(server, wallet, ['200bit', '500sat'], function() {
           var txOpts = {
             outputs: [{
-              toAddress: '18PzpUFkFZE8zKWUPvfykkTxmB9oMR8qP7',
+              toAddress: 'LW2DcC8tHkjhKVXUaBwCiBAuHida4mwYaK',
               amount: 150e2,
             }],
             feePerKb: 100e2,
@@ -3863,8 +3869,8 @@ describe('Wallet service', function() {
           server.createTx(txOpts, function(err, txp) {
             should.not.exist(err);
             txp.inputs.length.should.equal(1);
-            (_.sum(txp.inputs, 'satoshis') - txp.outputs[0].amount - txp.fee).should.equal(0);
-            var changeOutput = txp.getBitcoreTx().getChangeOutput();
+            (_.sumBy(txp.inputs, 'satoshis') - txp.outputs[0].amount - txp.fee).should.equal(0);
+            var changeOutput = txp.getLtcTx().getChangeOutput();
             should.not.exist(changeOutput);
             done();
           });
@@ -3876,7 +3882,7 @@ describe('Wallet service', function() {
         })), function() {
           var txOpts = {
             outputs: [{
-              toAddress: '18PzpUFkFZE8zKWUPvfykkTxmB9oMR8qP7',
+              toAddress: 'LW2DcC8tHkjhKVXUaBwCiBAuHida4mwYaK',
               amount: 200e2,
             }],
             feePerKb: 80e2,
@@ -3892,7 +3898,7 @@ describe('Wallet service', function() {
         helpers.stubUtxos(server, wallet, [80, '50bit', '50bit', '50bit', '50bit', '50bit'], function() {
           var txOpts = {
             outputs: [{
-              toAddress: '18PzpUFkFZE8zKWUPvfykkTxmB9oMR8qP7',
+              toAddress: 'LW2DcC8tHkjhKVXUaBwCiBAuHida4mwYaK',
               amount: 101e2,
             }],
             feePerKb: 100e2,
@@ -3908,7 +3914,7 @@ describe('Wallet service', function() {
         helpers.stubUtxos(server, wallet, [1, 1], function() {
           var txOpts = {
             outputs: [{
-              toAddress: '18PzpUFkFZE8zKWUPvfykkTxmB9oMR8qP7',
+              toAddress: 'LW2DcC8tHkjhKVXUaBwCiBAuHida4mwYaK',
               amount: 1.5e8,
             }],
             feePerKb: 100e2,
@@ -4019,7 +4025,7 @@ describe('Wallet service', function() {
       helpers.stubUtxos(server, wallet, 2, function() {
         var txOpts = {
           outputs: [{
-            toAddress: '18PzpUFkFZE8zKWUPvfykkTxmB9oMR8qP7',
+            toAddress: 'LW2DcC8tHkjhKVXUaBwCiBAuHida4mwYaK',
             amount: 1e8,
           }],
           message: 'some message',
@@ -4201,7 +4207,7 @@ describe('Wallet service', function() {
           }, function(err, notes) {
             should.not.exist(err);
             notes.length.should.equal(2);
-            _.difference(_.pluck(notes, 'txid'), ['123', '456']).should.be.empty;
+            _.difference(_.map(notes, 'txid'), ['123', '456']).should.be.empty;
             next();
           });
         },
@@ -4287,7 +4293,7 @@ describe('Wallet service', function() {
     });
     it('should reuse address as change address on tx proposal creation', function(done) {
       helpers.stubUtxos(server, wallet, 2, function() {
-        var toAddress = '18PzpUFkFZE8zKWUPvfykkTxmB9oMR8qP7';
+        var toAddress = 'LW2DcC8tHkjhKVXUaBwCiBAuHida4mwYaK';
         var opts = {
           outputs: [{
             amount: 1e8,
@@ -4305,9 +4311,29 @@ describe('Wallet service', function() {
         });
       });
     });
+    it('should not duplicate address on storage after TX creation', function(done) {
+      helpers.stubUtxos(server, wallet, 2, function() {
+        var toAddress = 'LW2DcC8tHkjhKVXUaBwCiBAuHida4mwYaK';
+        var opts = {
+          outputs: [{
+            amount: 1e8,
+            toAddress: toAddress,
+          }],
+          feePerKb: 100e2,
+        };
+        server.createTx(opts, function(err, txp) {
+          should.not.exist(err);
+          server.storage.fetchAddresses(wallet.id, function(err, addresses) {
+            should.not.exist(err);
+            addresses.length.should.equal(1);
+            done();
+          });
+        });
+      });
+    });
     it('should not be able to specify custom changeAddress', function(done) {
       helpers.stubUtxos(server, wallet, 2, function() {
-        var toAddress = '18PzpUFkFZE8zKWUPvfykkTxmB9oMR8qP7';
+        var toAddress = 'LW2DcC8tHkjhKVXUaBwCiBAuHida4mwYaK';
         var opts = {
           outputs: [{
             amount: 1e8,
@@ -4364,7 +4390,6 @@ describe('Wallet service', function() {
     });
   });
 
-
   describe('#getSendMaxInfo', function() {
     var server, wallet;
     beforeEach(function(done) {
@@ -4378,7 +4403,7 @@ describe('Wallet service', function() {
     function sendTx(info, cb) {
       var txOpts = {
         outputs: [{
-          toAddress: '18PzpUFkFZE8zKWUPvfykkTxmB9oMR8qP7',
+          toAddress: 'LW2DcC8tHkjhKVXUaBwCiBAuHida4mwYaK',
           amount: info.amount,
         }],
         inputs: info.inputs,
@@ -4387,7 +4412,7 @@ describe('Wallet service', function() {
       server.createTx(txOpts, function(err, tx) {
         should.not.exist(err);
         should.exist(tx);
-        var t = tx.getBitcoreTx();
+        var t = tx.getLtcTx();
         t.toObject().inputs.length.should.equal(info.inputs.length);
         t.getFee().should.equal(info.fee);
         should.not.exist(t.getChangeOutput());
@@ -4522,9 +4547,9 @@ describe('Wallet service', function() {
         }, function(err, info) {
           should.not.exist(err);
           should.exist(info);
-          var amounts = _.pluck(info.inputs, 'satoshis');
+          var amounts = _.map(info.inputs, 'satoshis');
           amounts.length.should.equal(30);
-          _.all(amounts, function(amount, i) {
+          _.every(amounts, function(amount, i) {
             if (i == 0) return true;
             return amount < amounts[i - 1];
           }).should.be.false;
@@ -4553,7 +4578,7 @@ describe('Wallet service', function() {
       helpers.stubUtxos(server, wallet, ['u0.1', 0.1, 0.1, 0.1], function() {
         var txOpts = {
           outputs: [{
-            toAddress: '18PzpUFkFZE8zKWUPvfykkTxmB9oMR8qP7',
+            toAddress: 'LW2DcC8tHkjhKVXUaBwCiBAuHida4mwYaK',
             amount: 0.09e8,
           }],
           feePerKb: 100e2,
@@ -4656,7 +4681,7 @@ describe('Wallet service', function() {
         helpers.stubUtxos(server, wallet, _.range(1, 9), function() {
           var txOpts = {
             outputs: [{
-              toAddress: '18PzpUFkFZE8zKWUPvfykkTxmB9oMR8qP7',
+              toAddress: 'LW2DcC8tHkjhKVXUaBwCiBAuHida4mwYaK',
               amount: 10e8,
             }],
             feePerKb: 100e2,
@@ -4751,7 +4776,7 @@ describe('Wallet service', function() {
           helpers.stubUtxos(server, wallet, [1, 2], function() {
             var txOpts = {
               outputs: [{
-                toAddress: '18PzpUFkFZE8zKWUPvfykkTxmB9oMR8qP7',
+                toAddress: 'LW2DcC8tHkjhKVXUaBwCiBAuHida4mwYaK',
                 amount: 2.5e8,
               }],
               feePerKb: 100e2,
@@ -4805,7 +4830,7 @@ describe('Wallet service', function() {
           helpers.stubUtxos(server, wallet, _.range(1, 9), function() {
             var txOpts = {
               outputs: [{
-                toAddress: '18PzpUFkFZE8zKWUPvfykkTxmB9oMR8qP7',
+                toAddress: 'LW2DcC8tHkjhKVXUaBwCiBAuHida4mwYaK',
                 amount: 20e8,
               }],
               feePerKb: 100e2,
@@ -5016,7 +5041,7 @@ describe('Wallet service', function() {
         helpers.stubUtxos(server, wallet, [10, 10], function() {
           var txOpts = {
             outputs: [{
-              toAddress: '18PzpUFkFZE8zKWUPvfykkTxmB9oMR8qP7',
+              toAddress: 'LW2DcC8tHkjhKVXUaBwCiBAuHida4mwYaK',
               amount: 9e8,
             }],
             message: 'some message',
@@ -5065,7 +5090,7 @@ describe('Wallet service', function() {
     it('should broadcast a raw tx', function(done) {
       helpers.stubBroadcast();
       server.broadcastRawTx({
-        network: 'testnet',
+        network: Constants.TESTNET,
         rawTx: 'raw tx',
       }, function(err, txid) {
         should.not.exist(err);
@@ -5107,7 +5132,7 @@ describe('Wallet service', function() {
       helpers.stubBroadcast();
       var txOpts = {
         outputs: [{
-          toAddress: '18PzpUFkFZE8zKWUPvfykkTxmB9oMR8qP7',
+          toAddress: 'LW2DcC8tHkjhKVXUaBwCiBAuHida4mwYaK',
           amount: 9e8,
         }],
         feePerKb: 100e2,
@@ -5133,7 +5158,7 @@ describe('Wallet service', function() {
       helpers.stubBroadcast();
       var txOpts = {
         outputs: [{
-          toAddress: '18PzpUFkFZE8zKWUPvfykkTxmB9oMR8qP7',
+          toAddress: 'LW2DcC8tHkjhKVXUaBwCiBAuHida4mwYaK',
           amount: 9e8,
         }],
         feePerKb: 100e2,
@@ -5209,7 +5234,6 @@ describe('Wallet service', function() {
         });
       });
     });
-
   });
 
   describe('Tx proposal workflow', function() {
@@ -5228,7 +5252,7 @@ describe('Wallet service', function() {
     it('other copayers should see pending proposal created by one copayer', function(done) {
       var txOpts = {
         outputs: [{
-          toAddress: '18PzpUFkFZE8zKWUPvfykkTxmB9oMR8qP7',
+          toAddress: 'LW2DcC8tHkjhKVXUaBwCiBAuHida4mwYaK',
           amount: 10e8
         }],
         feePerKb: 100e2,
@@ -5254,7 +5278,7 @@ describe('Wallet service', function() {
         function(next) {
           var txOpts = {
             outputs: [{
-              toAddress: '18PzpUFkFZE8zKWUPvfykkTxmB9oMR8qP7',
+              toAddress: 'LW2DcC8tHkjhKVXUaBwCiBAuHida4mwYaK',
               amount: 10e8
             }],
             feePerKb: 100e2,
@@ -5347,7 +5371,7 @@ describe('Wallet service', function() {
         function(next) {
           var txOpts = {
             outputs: [{
-              toAddress: '18PzpUFkFZE8zKWUPvfykkTxmB9oMR8qP7',
+              toAddress: 'LW2DcC8tHkjhKVXUaBwCiBAuHida4mwYaK',
               amount: 10e8
             }],
             feePerKb: 100e2,
@@ -5435,7 +5459,7 @@ describe('Wallet service', function() {
         helpers.stubUtxos(server, wallet, 1, function() {
           var txOpts = {
             outputs: [{
-              toAddress: '18PzpUFkFZE8zKWUPvfykkTxmB9oMR8qP7',
+              toAddress: 'LW2DcC8tHkjhKVXUaBwCiBAuHida4mwYaK',
               amount: 0.5e8
             }],
             feePerKb: 100e2,
@@ -5499,7 +5523,7 @@ describe('Wallet service', function() {
         helpers.stubUtxos(server, wallet, _.range(1, 11), function() {
           var txOpts = {
             outputs: [{
-              toAddress: '18PzpUFkFZE8zKWUPvfykkTxmB9oMR8qP7',
+              toAddress: 'LW2DcC8tHkjhKVXUaBwCiBAuHida4mwYaK',
               amount: 0.1e8
             }],
             feePerKb: 100e2,
@@ -5526,7 +5550,7 @@ describe('Wallet service', function() {
         limit: 8
       }, function(err, txps) {
         should.not.exist(err);
-        var times = _.pluck(txps, 'createdOn');
+        var times = _.map(txps, 'createdOn');
         times.should.deep.equal([100, 90, 80, 70, 60]);
         done();
       });
@@ -5537,7 +5561,7 @@ describe('Wallet service', function() {
         limit: 5
       }, function(err, txps) {
         should.not.exist(err);
-        var times = _.pluck(txps, 'createdOn');
+        var times = _.map(txps, 'createdOn');
         times.should.deep.equal([50, 40, 30, 20, 10]);
         done();
       });
@@ -5547,7 +5571,7 @@ describe('Wallet service', function() {
         limit: 4
       }, function(err, txps) {
         should.not.exist(err);
-        var times = _.pluck(txps, 'createdOn');
+        var times = _.map(txps, 'createdOn');
         times.should.deep.equal([100, 90, 80, 70]);
         done();
       });
@@ -5555,7 +5579,7 @@ describe('Wallet service', function() {
     it('should pull all txs', function(done) {
       server.getTxs({}, function(err, txps) {
         should.not.exist(err);
-        var times = _.pluck(txps, 'createdOn');
+        var times = _.map(txps, 'createdOn');
         times.should.deep.equal([100, 90, 80, 70, 60, 50, 40, 30, 20, 10]);
         done();
       });
@@ -5567,7 +5591,7 @@ describe('Wallet service', function() {
           maxTs: 70,
         }, function(err, txps) {
           should.not.exist(err);
-          var times = _.pluck(txps, 'createdOn');
+          var times = _.map(txps, 'createdOn');
           times.should.deep.equal([70, 60, 50]);
           done();
         });
@@ -5586,7 +5610,7 @@ describe('Wallet service', function() {
         helpers.stubUtxos(server, wallet, _.range(4), function() {
           var txOpts = {
             outputs: [{
-              toAddress: '18PzpUFkFZE8zKWUPvfykkTxmB9oMR8qP7',
+              toAddress: 'LW2DcC8tHkjhKVXUaBwCiBAuHida4mwYaK',
               amount: 0.1e8
             }],
             feePerKb: 100e2,
@@ -5610,12 +5634,12 @@ describe('Wallet service', function() {
     it('should pull all notifications', function(done) {
       server.getNotifications({}, function(err, notifications) {
         should.not.exist(err);
-        var types = _.pluck(notifications, 'type');
+        var types = _.map(notifications, 'type');
         types.should.deep.equal(['NewCopayer', 'NewAddress', 'NewAddress', 'NewTxProposal', 'NewTxProposal', 'NewTxProposal']);
-        var walletIds = _.uniq(_.pluck(notifications, 'walletId'));
+        var walletIds = _.uniq(_.map(notifications, 'walletId'));
         walletIds.length.should.equal(1);
         walletIds[0].should.equal(wallet.id);
-        var creators = _.uniq(_.compact(_.pluck(notifications, 'creatorId')));
+        var creators = _.uniq(_.compact(_.map(notifications, 'creatorId')));
         creators.length.should.equal(1);
         creators[0].should.equal(wallet.copayers[0].id);
         done();
@@ -5623,14 +5647,14 @@ describe('Wallet service', function() {
     });
     it('should pull new block notifications along with wallet notifications in the last 60 seconds', function(done) {
       // Simulate new block notification
-      server.walletId = 'livenet';
+      server.walletId = Constants.LIVENET;
       server._notify('NewBlock', {
         hash: 'dummy hash',
       }, {
         isGlobal: true
       }, function(err) {
         should.not.exist(err);
-        server.walletId = 'testnet';
+        server.walletId = Constants.TESTNET;
         server._notify('NewBlock', {
           hash: 'dummy hash',
         }, {
@@ -5642,9 +5666,9 @@ describe('Wallet service', function() {
             minTs: +Date.now() - (60 * 1000),
           }, function(err, notifications) {
             should.not.exist(err);
-            var types = _.pluck(notifications, 'type');
+            var types = _.map(notifications, 'type');
             types.should.deep.equal(['NewTxProposal', 'NewTxProposal', 'NewBlock']);
-            var walletIds = _.uniq(_.pluck(notifications, 'walletId'));
+            var walletIds = _.uniq(_.map(notifications, 'walletId'));
             walletIds.length.should.equal(1);
             walletIds[0].should.equal(wallet.id);
             done();
@@ -5657,7 +5681,7 @@ describe('Wallet service', function() {
         minTs: +Date.now() - (60 * 1000),
       }, function(err, notifications) {
         should.not.exist(err);
-        var types = _.pluck(notifications, 'type');
+        var types = _.map(notifications, 'type');
         types.should.deep.equal(['NewTxProposal', 'NewTxProposal']);
         done();
       });
@@ -5665,14 +5689,14 @@ describe('Wallet service', function() {
     it('should pull notifications after a given notification id', function(done) {
       server.getNotifications({}, function(err, notifications) {
         should.not.exist(err);
-        var from = _.first(_.takeRight(notifications, 2)).id; // second to last
+        var from = _.head(_.takeRight(notifications, 2)).id; // second to last
         server.getNotifications({
           notificationId: from,
           minTs: +Date.now() - (60 * 1000),
         }, function(err, res) {
           should.not.exist(err);
           res.length.should.equal(1);
-          res[0].id.should.equal(_.first(_.takeRight(notifications)).id);
+          res[0].id.should.equal(_.head(_.takeRight(notifications)).id);
           done();
         });
       });
@@ -5680,7 +5704,7 @@ describe('Wallet service', function() {
     it('should return empty if no notifications found after a given id', function(done) {
       server.getNotifications({}, function(err, notifications) {
         should.not.exist(err);
-        var from = _.first(_.takeRight(notifications)).id; // last one
+        var from = _.head(_.takeRight(notifications)).id; // last one
         server.getNotifications({
           notificationId: from,
         }, function(err, res) {
@@ -5724,7 +5748,7 @@ describe('Wallet service', function() {
           }, function(err, notifications) {
             should.not.exist(err);
             notifications.length.should.equal(2);
-            var types = _.pluck(notifications, 'type');
+            var types = _.map(notifications, 'type');
             types.should.deep.equal(['TxProposalAcceptedBy', 'TxProposalFinallyAccepted']);
             done();
           });
@@ -5743,7 +5767,7 @@ describe('Wallet service', function() {
           }, function(err, notifications) {
             should.not.exist(err);
             notifications.length.should.equal(2);
-            var types = _.pluck(notifications, 'type');
+            var types = _.map(notifications, 'type');
             types.should.deep.equal(['TxProposalRejectedBy', 'TxProposalFinallyRejected']);
             done();
           });
@@ -5769,7 +5793,7 @@ describe('Wallet service', function() {
             }, function(err, notifications) {
               should.not.exist(err);
               notifications.length.should.equal(3);
-              var types = _.pluck(notifications, 'type');
+              var types = _.map(notifications, 'type');
               types.should.deep.equal(['TxProposalAcceptedBy', 'TxProposalFinallyAccepted', 'NewOutgoingTx']);
               done();
             });
@@ -5799,7 +5823,7 @@ describe('Wallet service', function() {
             }, function(err, notifications) {
               should.not.exist(err);
               notifications.length.should.equal(3);
-              var types = _.pluck(notifications, 'type');
+              var types = _.map(notifications, 'type');
               types.should.deep.equal(['TxProposalAcceptedBy', 'TxProposalFinallyAccepted', 'NewOutgoingTxByThirdParty']);
               done();
             });
@@ -5818,7 +5842,7 @@ describe('Wallet service', function() {
         helpers.stubUtxos(server, wallet, [1, 2], function() {
           var txOpts = {
             outputs: [{
-              toAddress: '18PzpUFkFZE8zKWUPvfykkTxmB9oMR8qP7',
+              toAddress: 'LW2DcC8tHkjhKVXUaBwCiBAuHida4mwYaK',
               amount: 0.8e8
             }],
             feePerKb: 100e2,
@@ -6027,7 +6051,7 @@ describe('Wallet service', function() {
       });
     });
 
-    it('should get tx history from insight', function(done) {
+    it('should get tx history from explorer', function(done) {
       helpers.stubHistory(TestData.history);
       server.getTxHistory({}, function(err, txs) {
         should.not.exist(err);
@@ -6134,7 +6158,7 @@ describe('Wallet service', function() {
     });
     it('should get tx history with accepted proposal', function(done) {
       server._normalizeTxHistory = sinon.stub().returnsArg(0);
-      var external = '18PzpUFkFZE8zKWUPvfykkTxmB9oMR8qP7';
+      var external = 'LW2DcC8tHkjhKVXUaBwCiBAuHida4mwYaK';
 
       helpers.stubUtxos(server, wallet, [1, 2], function(utxos) {
         var txOpts = {
@@ -6297,7 +6321,7 @@ describe('Wallet service', function() {
         server.getTxHistory(testCase.opts, function(err, txs) {
           should.not.exist(err);
           should.exist(txs);
-          _.pluck(txs, 'time').should.deep.equal(testCase.expected);
+          _.map(txs, 'time').should.deep.equal(testCase.expected);
           next();
         });
       }, done);
@@ -6448,7 +6472,7 @@ describe('Wallet service', function() {
       Defaults.HISTORY_CACHE_ADDRESS_THRESOLD = _threshold;
     });
 
-    it('should store partial cache tx history from insight', function(done) {
+    it('should store partial cache tx history from explorer', function(done) {
       var skip = 31;
       var limit = 10;
       var totalItems = 200;
@@ -6505,7 +6529,7 @@ describe('Wallet service', function() {
     });
 
 
-    it('should store cache all tx history from insight', function(done) {
+    it('should store cache all tx history from explorer', function(done) {
       var skip = 195;
       var limit = 5;
       var totalItems = 200;
@@ -6569,12 +6593,12 @@ describe('Wallet service', function() {
         }, function(err, txs) {
           should.not.exist(err);
           txs.length.should.equal(20);
-          _.first(txs).confirmations.should.equal(501);
+          _.head(txs).confirmations.should.equal(501);
           _.last(txs).confirmations.should.equal(520);
 
           blockchainExplorer.getBlockchainHeight = sinon.stub().callsArgWith(0, null, 2000);
           server._notify('NewBlock', {
-            network: 'livenet',
+            network: Constants.LIVENET,
             hash: 'dummy hash',
           }, {
             isGlobal: true
@@ -6586,7 +6610,7 @@ describe('Wallet service', function() {
                 limit: 30,
               }, function(err, txs) {
                 should.not.exist(err);
-                _.first(txs).confirmations.should.equal(1001);
+                _.head(txs).confirmations.should.equal(1001);
                 _.last(txs).confirmations.should.equal(1020);
 
                 server.storage.storeTxHistoryCache.restore();
@@ -6631,7 +6655,7 @@ describe('Wallet service', function() {
         }, function(err, txs) {
           should.not.exist(err);
           txs.length.should.equal(20);
-          _.first(txs).confirmations.should.equal(500);
+          _.head(txs).confirmations.should.equal(500);
           _.last(txs).confirmations.should.equal(519);
 
           server.storage.storeTxHistoryCache.restore();
@@ -6669,7 +6693,7 @@ describe('Wallet service', function() {
         }, function(err, txs) {
           should.not.exist(err);
           txs.length.should.equal(20);
-          _.first(txs).confirmations.should.equal(0);
+          _.head(txs).confirmations.should.equal(0);
           _.last(txs).confirmations.should.equal(19);
 
           server.storage.storeTxHistoryCache.restore();
@@ -6700,7 +6724,7 @@ describe('Wallet service', function() {
             should.exist(txs);
             txs.length.should.equal(5);
             var s = h.slice(i, i + 5);
-            _.pluck(txs, 'txid').should.deep.equal(_.pluck(s, 'txid'));
+            _.map(txs, 'txid').should.deep.equal(_.map(s, 'txid'));
             fromCache.should.equal(false);
             next();
           });
@@ -6714,7 +6738,7 @@ describe('Wallet service', function() {
               should.exist(txs);
               txs.length.should.equal(5);
               var s = h.slice(i, i + 5);
-              _.pluck(txs, 'txid').should.deep.equal(_.pluck(s, 'txid'));
+              _.map(txs, 'txid').should.deep.equal(_.map(s, 'txid'));
               fromCache.should.equal(i >= Defaults.CONFIRMATIONS_TO_START_CACHING && i < 200);
               next();
             });
@@ -6733,7 +6757,7 @@ describe('Wallet service', function() {
             should.exist(txs);
             txs.length.should.equal(5);
             var s = h.slice(i, i + 5);
-            _.pluck(txs, 'txid').should.deep.equal(_.pluck(s, 'txid'));
+            _.map(txs, 'txid').should.deep.equal(_.map(s, 'txid'));
             fromCache.should.equal(false);
             next();
           });
@@ -6747,7 +6771,7 @@ describe('Wallet service', function() {
               should.exist(txs);
               txs.length.should.equal(7);
               var s = h.slice(i, i + 7);
-              _.pluck(txs, 'txid').should.deep.equal(_.pluck(s, 'txid'));
+              _.map(txs, 'txid').should.deep.equal(_.map(s, 'txid'));
               fromCache.should.equal(i >= Defaults.CONFIRMATIONS_TO_START_CACHING);
               next();
             });
@@ -6767,7 +6791,7 @@ describe('Wallet service', function() {
             should.exist(txs);
             txs.length.should.equal(5);
             var s = h.slice(i, i + 5);
-            _.pluck(txs, 'txid').should.deep.equal(_.pluck(s, 'txid'));
+            _.map(txs, 'txid').should.deep.equal(_.map(s, 'txid'));
             fromCache.should.equal(false);
             next();
           });
@@ -6793,7 +6817,7 @@ describe('Wallet service', function() {
                 should.exist(txs);
                 txs.length.should.equal(5);
                 var s = h.slice(i, i + 5);
-                _.pluck(txs, 'txid').should.deep.equal(_.pluck(s, 'txid'));
+                _.map(txs, 'txid').should.deep.equal(_.map(s, 'txid'));
                 fromCache.should.equal(i >= Defaults.CONFIRMATIONS_TO_START_CACHING && !reset);
                 next();
               });
@@ -6824,9 +6848,9 @@ describe('Wallet service', function() {
 
       it('should scan main addresses', function(done) {
         helpers.stubAddressActivity(
-          ['1L3z9LPd861FWQhf3vDn89Fnc9dkdBo2CG', // m/0/0
-            '1GdXraZ1gtoVAvBh49D4hK9xLm6SKgesoE', // m/0/2
-            '1FUzgKcyPJsYwDLUEVJYeE2N3KVaoxTjGS', // m/1/0
+          ['LeGwQYhTCkFJmDPpE4D5QAKYpN12mETsCn', // m/0/0
+            'LarV7nrqmZ3YRisrEHCMyLDiYyTiTVshXK', // m/0/2
+            'LZhwwXvoTy7cC22dQdHqvF68FXrrtm45dK', // m/1/0
           ]);
         var expectedPaths = [
           'm/0/0',
@@ -6837,12 +6861,20 @@ describe('Wallet service', function() {
         server.scan({}, function(err) {
           should.not.exist(err);
           server.getWallet({}, function(err, wallet) {
+              if (err) {
+                  console.error(1, err);
+                  return done(err)
+              }
             should.not.exist(err);
             wallet.scanStatus.should.equal('success');
             server.storage.fetchAddresses(wallet.id, function(err, addresses) {
+                if (err) {
+                    console.error(2, err);
+                    return done(err);
+                }
               should.exist(addresses);
               addresses.length.should.equal(expectedPaths.length);
-              var paths = _.pluck(addresses, 'path');
+              var paths = _.map(addresses, 'path');
               _.difference(paths, expectedPaths).length.should.equal(0);
               server.createAddress({}, function(err, address) {
                 should.not.exist(err);
@@ -6856,9 +6888,9 @@ describe('Wallet service', function() {
 
       it('should not go beyond max gap', function(done) {
         helpers.stubAddressActivity(
-          ['1L3z9LPd861FWQhf3vDn89Fnc9dkdBo2CG', // m/0/0
-            '1GdXraZ1gtoVAvBh49D4hK9xLm6SKgesoE', // m/0/2
-            '1DY9exavapgnCUWDnSTJe1BPzXcpgwAQC4', // m/0/5
+          ['LeGwQYhTCkFJmDPpE4D5QAKYpN12mETsCn', // m/0/0
+            'LarV7nrqmZ3YRisrEHCMyLDiYyTiTVshXK', // m/0/2
+            'LXm6vAtkfUvqTHCNxaSbv2FACjz6rf4FzU', // m/0/5
             '1LD7Cr68LvBPTUeXrr6YXfGrogR7TVj3WQ', // m/1/3
           ]);
         var expectedPaths = [
@@ -6874,7 +6906,7 @@ describe('Wallet service', function() {
             server.storage.fetchAddresses(wallet.id, function(err, addresses) {
               should.exist(addresses);
               addresses.length.should.equal(expectedPaths.length);
-              var paths = _.pluck(addresses, 'path');
+              var paths = _.map(addresses, 'path');
               _.difference(paths, expectedPaths).length.should.equal(0);
               server.createAddress({}, function(err, address) {
                 should.not.exist(err);
@@ -6942,7 +6974,7 @@ describe('Wallet service', function() {
           function(next) {
             helpers.stubUtxos(server, wallet, [1, 2, 3], function(utxos) {
               should.exist(utxos);
-              helpers.stubAddressActivity(_.pluck(utxos, 'address'));
+              helpers.stubAddressActivity(_.map(utxos, 'address'));
               server.getBalance({}, function(err, balance) {
                 balance.totalAmount.should.equal(helpers.toSatoshi(6));
                 next(null, server, wallet);
@@ -7034,7 +7066,7 @@ describe('Wallet service', function() {
             server.storage.fetchAddresses(wallet.id, function(err, addresses) {
               should.exist(addresses);
               addresses.length.should.equal(expectedPaths.length);
-              var paths = _.pluck(addresses, 'path');
+              var paths = _.map(addresses, 'path');
               _.difference(paths, expectedPaths).length.should.equal(0);
               server.createAddress({}, function(err, address) {
                 should.not.exist(err);
@@ -7068,7 +7100,7 @@ describe('Wallet service', function() {
           server.storage.fetchAddresses(wallet.id, function(err, addresses) {
             should.exist(addresses);
             addresses.length.should.equal(expectedPaths.length);
-            var paths = _.pluck(addresses, 'path');
+            var paths = _.map(addresses, 'path');
             _.difference(paths, expectedPaths).length.should.equal(0);
             done();
           })
@@ -7116,7 +7148,7 @@ describe('Wallet service', function() {
             server.storage.fetchAddresses(wallet.id, function(err, addresses) {
               should.exist(addresses);
               addresses.length.should.equal(expectedPaths.length);
-              var paths = _.pluck(addresses, 'path');
+              var paths = _.map(addresses, 'path');
               _.difference(paths, expectedPaths).length.should.equal(0);
               server.createAddress({}, function(err, address) {
                 should.not.exist(err);
@@ -7208,7 +7240,7 @@ describe('Wallet service', function() {
       helpers.stubUtxos(server, wallet, [1, 2], function() {
         var txOpts = {
           outputs: [{
-            toAddress: '18PzpUFkFZE8zKWUPvfykkTxmB9oMR8qP7',
+            toAddress: 'LW2DcC8tHkjhKVXUaBwCiBAuHida4mwYaK',
             amount: 0.8e8
           }],
           feePerKb: 100e2,
@@ -7443,6 +7475,109 @@ describe('Wallet service', function() {
           should.not.exist(err);
           done();
         });
+      });
+    });
+  });
+
+  describe('#getWalletFromIdentifier', function() {
+    var server, wallet;
+    beforeEach(function(done) {
+      helpers.createAndJoinWallet(1, 1, {}, function(s, w) {
+        server = s;
+        wallet = w;
+        done();
+      });
+    });
+
+    it('should get wallet from id', function(done) {
+      server.getWalletFromIdentifier({
+        identifier: wallet.id
+      }, function(err, w) {
+        should.not.exist(err);
+        should.exist(w);
+        w.id.should.equal(wallet.id);
+        done();
+      });
+    });
+    it('should get wallet from address', function(done) {
+      server.createAddress({}, function(err, address) {
+        should.not.exist(err);
+        should.exist(address);
+        server.getWalletFromIdentifier({
+          identifier: address.address
+        }, function(err, w) {
+          should.not.exist(err);
+          should.exist(w);
+          w.id.should.equal(wallet.id);
+          done();
+        });
+      });
+    });
+    it('should get wallet from tx proposal', function(done) {
+      helpers.stubUtxos(server, wallet, '1 ltc', function() {
+        helpers.stubBroadcast();
+        var txOpts = {
+          outputs: [{
+            toAddress: 'LW2DcC8tHkjhKVXUaBwCiBAuHida4mwYaK',
+            amount: 1000e2
+          }],
+          feePerKb: 100e2,
+          message: 'some message',
+        };
+        helpers.createAndPublishTx(server, txOpts, TestData.copayers[0].privKey_1H_0, function(txp) {
+          should.exist(txp);
+          var signatures = helpers.clientSign(txp, TestData.copayers[0].xPrivKey_44H_0H_0H);
+          server.signTx({
+            txProposalId: txp.id,
+            signatures: signatures,
+          }, function(err) {
+            should.not.exist(err);
+            server.getPendingTxs({}, function(err, txps) {
+              should.not.exist(err);
+              txp = txps[0];
+              server.getWalletFromIdentifier({
+                identifier: txp.txid
+              }, function(err, w) {
+                should.not.exist(err);
+                should.exist(w);
+                w.id.should.equal(wallet.id);
+                done();
+              });
+            });
+          });
+        });
+      });
+    });
+    it('should get wallet from incoming txid', function(done) {
+      server.createAddress({}, function(err, address) {
+        should.not.exist(err);
+        should.exist(address);
+        blockchainExplorer.getTransaction = sinon.stub().callsArgWith(1, null, {
+          txid: '999',
+          vout: [{
+            scriptPubKey: {
+              addresses: [address.address]
+            }
+          }],
+        });
+        server.getWalletFromIdentifier({
+          identifier: '999'
+        }, function(err, w) {
+          should.not.exist(err);
+          should.exist(w);
+          w.id.should.equal(wallet.id);
+          done();
+        });
+      });
+    });
+    it('should return nothing if identifier not associated with a wallet', function(done) {
+      blockchainExplorer.getTransaction = sinon.stub().callsArgWith(1, null, null);
+      server.getWalletFromIdentifier({
+        identifier: 'dummy'
+      }, function(err, w) {
+        should.not.exist(err);
+        should.not.exist(w);
+        done();
       });
     });
   });

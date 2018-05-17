@@ -12,6 +12,7 @@ log.level = 'info';
 
 var WalletService = require('../../lib/server');
 var EmailService = require('../../lib/emailservice');
+var Constants = require('../../lib/common/constants');
 
 var TestData = require('../testdata');
 var helpers = require('./helpers');
@@ -48,18 +49,20 @@ describe('Email notifications', function() {
             mailerStub.sendMail.yields();
 
             emailService = new EmailService();
+
+            var publicTxUrlTemplate = {};
+            publicTxUrlTemplate[Constants.LIVENET] = 'https://explorer.openwalletstack.com/tx/{{txid}}';
+            publicTxUrlTemplate[Constants.TESTNET] = 'https://test-explorer.openwalletstack.com/tx/{{txid}}';
+
             emailService.start({
               lockOpts: {},
               messageBroker: server.messageBroker,
               storage: helpers.getStorage(),
               mailer: mailerStub,
               emailOpts: {
-                from: 'bws@dummy.net',
+                from: 'ltcws@dummy.net',
                 subjectPrefix: '[test wallet]',
-                publicTxUrlTemplate: {
-                  livenet: 'https://insight.bitpay.com/tx/{{txid}}',
-                  testnet: 'https://test-insight.bitpay.com/tx/{{txid}}',
-                },
+                publicTxUrlTemplate: publicTxUrlTemplate
               },
             }, function(err) {
               should.not.exist(err);
@@ -82,7 +85,7 @@ describe('Email notifications', function() {
       helpers.stubUtxos(server, wallet, [1, 1], function() {
         var txOpts = {
           outputs: [{
-            toAddress: '18PzpUFkFZE8zKWUPvfykkTxmB9oMR8qP7',
+            toAddress: 'LW2DcC8tHkjhKVXUaBwCiBAuHida4mwYaK',
             amount: 0.8e8
           }],
           feePerKb: 100e2
@@ -94,9 +97,9 @@ describe('Email notifications', function() {
             var emails = _.map(calls, function(c) {
               return c.args[0];
             });
-            _.difference(['copayer2@domain.com', 'copayer3@domain.com'], _.pluck(emails, 'to')).should.be.empty;
+            _.difference(['copayer2@domain.com', 'copayer3@domain.com'], _.map(emails, 'to')).should.be.empty;
             var one = emails[0];
-            one.from.should.equal('bws@dummy.net');
+            one.from.should.equal('ltcws@dummy.net');
             one.subject.should.contain('New payment proposal');
             should.exist(one.html);
             one.html.indexOf('<html>').should.equal(0);
@@ -119,7 +122,7 @@ describe('Email notifications', function() {
       helpers.stubUtxos(server, wallet, [1, 1], function() {
         var txOpts = {
           outputs: [{
-            toAddress: '18PzpUFkFZE8zKWUPvfykkTxmB9oMR8qP7',
+            toAddress: 'LW2DcC8tHkjhKVXUaBwCiBAuHida4mwYaK',
             amount: 0.8e8
           }],
           feePerKb: 100e2
@@ -151,7 +154,7 @@ describe('Email notifications', function() {
       helpers.stubUtxos(server, wallet, [1, 1], function() {
         var txOpts = {
           outputs: [{
-            toAddress: '18PzpUFkFZE8zKWUPvfykkTxmB9oMR8qP7',
+            toAddress: 'LW2DcC8tHkjhKVXUaBwCiBAuHida4mwYaK',
             amount: 0.8e8
           }],
           feePerKb: 100e2
@@ -195,13 +198,13 @@ describe('Email notifications', function() {
             var emails = _.map(_.takeRight(calls, 3), function(c) {
               return c.args[0];
             });
-            _.difference(['copayer1@domain.com', 'copayer2@domain.com', 'copayer3@domain.com'], _.pluck(emails, 'to')).should.be.empty;
+            _.difference(['copayer1@domain.com', 'copayer2@domain.com', 'copayer3@domain.com'], _.map(emails, 'to')).should.be.empty;
             var one = emails[0];
-            one.from.should.equal('bws@dummy.net');
+            one.from.should.equal('ltcws@dummy.net');
             one.subject.should.contain('Payment sent');
             one.text.should.contain('800,000');
             should.exist(one.html);
-            one.html.should.contain('https://insight.bitpay.com/tx/' + txp.txid);
+            one.html.should.contain('https://explorer.openwalletstack.com/tx/' + txp.txid);
             server.storage.fetchUnsentEmails(function(err, unsent) {
               should.not.exist(err);
               unsent.should.be.empty;
@@ -217,7 +220,7 @@ describe('Email notifications', function() {
       helpers.stubUtxos(server, wallet, 1, function() {
         var txOpts = {
           outputs: [{
-            toAddress: '18PzpUFkFZE8zKWUPvfykkTxmB9oMR8qP7',
+            toAddress: 'LW2DcC8tHkjhKVXUaBwCiBAuHida4mwYaK',
             amount: 0.8e8
           }],
           feePerKb: 100e2
@@ -250,9 +253,9 @@ describe('Email notifications', function() {
             var emails = _.map(_.takeRight(calls, 2), function(c) {
               return c.args[0];
             });
-            _.difference(['copayer1@domain.com', 'copayer2@domain.com'], _.pluck(emails, 'to')).should.be.empty;
+            _.difference(['copayer1@domain.com', 'copayer2@domain.com'], _.map(emails, 'to')).should.be.empty;
             var one = emails[0];
-            one.from.should.equal('bws@dummy.net');
+            one.from.should.equal('ltcws@dummy.net');
             one.subject.should.contain('Payment proposal rejected');
             server.storage.fetchUnsentEmails(function(err, unsent) {
               should.not.exist(err);
@@ -280,9 +283,9 @@ describe('Email notifications', function() {
             var emails = _.map(calls, function(c) {
               return c.args[0];
             });
-            _.difference(['copayer1@domain.com', 'copayer2@domain.com', 'copayer3@domain.com'], _.pluck(emails, 'to')).should.be.empty;
+            _.difference(['copayer1@domain.com', 'copayer2@domain.com', 'copayer3@domain.com'], _.map(emails, 'to')).should.be.empty;
             var one = emails[0];
-            one.from.should.equal('bws@dummy.net');
+            one.from.should.equal('ltcws@dummy.net');
             one.subject.should.contain('New payment received');
             one.text.should.contain('123,000');
             server.storage.fetchUnsentEmails(function(err, unsent) {
@@ -313,7 +316,7 @@ describe('Email notifications', function() {
               calls.length.should.equal(1);
               var email = calls[0].args[0];
               email.to.should.equal('copayer1@domain.com');
-              email.from.should.equal('bws@dummy.net');
+              email.from.should.equal('ltcws@dummy.net');
               email.subject.should.contain('Transaction confirmed');
               server.storage.fetchUnsentEmails(function(err, unsent) {
                 should.not.exist(err);
@@ -347,9 +350,9 @@ describe('Email notifications', function() {
               var emails = _.map(calls, function(c) {
                 return c.args[0];
               });
-              _.difference(['copayer2@domain.com', 'copayer3@domain.com'], _.pluck(emails, 'to')).should.be.empty;
+              _.difference(['copayer2@domain.com', 'copayer3@domain.com'], _.map(emails, 'to')).should.be.empty;
               var one = emails[0];
-              one.from.should.equal('bws@dummy.net');
+              one.from.should.equal('ltcws@dummy.net');
               one.subject.should.contain('New payment received');
               one.text.should.contain('123,000');
               server.storage.fetchUnsentEmails(function(err, unsent) {
@@ -368,7 +371,7 @@ describe('Email notifications', function() {
       server.savePreferences({
         email: 'copayer1@domain.com',
         language: 'es',
-        unit: 'btc',
+        unit: 'ltc',
       }, function(err) {
         server.createAddress({}, function(err, address) {
           should.not.exist(err);
@@ -388,13 +391,13 @@ describe('Email notifications', function() {
               var spanish = _.find(emails, {
                 to: 'copayer1@domain.com'
               });
-              spanish.from.should.equal('bws@dummy.net');
+              spanish.from.should.equal('ltcws@dummy.net');
               spanish.subject.should.contain('Nuevo pago recibido');
               spanish.text.should.contain('0.123 BTC');
               var english = _.find(emails, {
                 to: 'copayer2@domain.com'
               });
-              english.from.should.equal('bws@dummy.net');
+              english.from.should.equal('ltcws@dummy.net');
               english.subject.should.contain('New payment received');
               english.text.should.contain('123,000 bits');
               done();
@@ -412,14 +415,14 @@ describe('Email notifications', function() {
         storage: helpers.getStorage(),
         mailer: mailerStub,
         emailOpts: {
-          from: 'bws2@dummy.net',
+          from: 'ltcws@dummy.net',
           subjectPrefix: '[test wallet 2]',
         },
       }, function(err) {
         helpers.stubUtxos(server, wallet, 1, function() {
           var txOpts = {
             outputs: [{
-              toAddress: '18PzpUFkFZE8zKWUPvfykkTxmB9oMR8qP7',
+              toAddress: 'LW2DcC8tHkjhKVXUaBwCiBAuHida4mwYaK',
               amount: 0.8e8
             }],
             feePerKb: 100e2
@@ -463,18 +466,20 @@ describe('Email notifications', function() {
             mailerStub.sendMail.yields();
 
             emailService = new EmailService();
+
+            var publicTxUrlTemplate = {};
+            publicTxUrlTemplate[Constants.LIVENET] = 'https://explorer.openwalletstack.com/tx/{{txid}}';
+            publicTxUrlTemplate[Constants.TESTNET] = 'https://test-explorer.openwalletstack.com/tx/{{txid}}';
+
             emailService.start({
               lockOpts: {},
               messageBroker: server.messageBroker,
               storage: helpers.getStorage(),
               mailer: mailerStub,
               emailOpts: {
-                from: 'bws@dummy.net',
+                from: 'ltcws@dummy.net',
                 subjectPrefix: '[test wallet]',
-                publicTxUrlTemplate: {
-                  livenet: 'https://insight.bitpay.com/tx/{{txid}}',
-                  testnet: 'https://test-insight.bitpay.com/tx/{{txid}}',
-                },
+                publicTxUrlTemplate: publicTxUrlTemplate
               },
             }, function(err) {
               should.not.exist(err);
@@ -488,7 +493,7 @@ describe('Email notifications', function() {
         helpers.stubUtxos(server, wallet, [1, 1], function() {
           var txOpts = {
             outputs: [{
-              toAddress: '18PzpUFkFZE8zKWUPvfykkTxmB9oMR8qP7',
+              toAddress: 'LW2DcC8tHkjhKVXUaBwCiBAuHida4mwYaK',
               amount: 0.8e8
             }],
             feePerKb: 100e2

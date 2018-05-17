@@ -145,7 +145,7 @@ describe('Storage', function() {
           var tx = Model.TxProposal.create({
             walletId: '123',
             outputs: [{
-              toAddress: '18PzpUFkFZE8zKWUPvfykkTxmB9oMR8qP7',
+              toAddress: 'LW2DcC8tHkjhKVXUaBwCiBAuHida4mwYaK',
               amount: i + 100,
             }],
             feePerKb: 100e2,
@@ -211,7 +211,7 @@ describe('Storage', function() {
             should.not.exist(err);
             should.exist(txs);
             txs.length.should.equal(3);
-            _.any(txs, {
+            _.some(txs, {
               id: proposals[0].id
             }).should.be.false;
             done();

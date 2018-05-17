@@ -72,7 +72,7 @@ describe('Push notifications', function() {
               pushNotificationsOpts: {
                 templatePath: './lib/templates',
                 defaultLanguage: 'en',
-                defaultUnit: 'btc',
+                defaultUnit: 'ltc',
                 subjectPrefix: '',
                 pushServerUrl: 'http://localhost:8000',
                 authorizationKey: 'secret',
@@ -226,7 +226,7 @@ describe('Push notifications', function() {
               pushNotificationsOpts: {
                 templatePath: './lib/templates',
                 defaultLanguage: 'en',
-                defaultUnit: 'btc',
+                defaultUnit: 'ltc',
                 subjectPrefix: '',
                 pushServerUrl: 'http://localhost:8000',
                 authorizationKey: 'secret',
@@ -244,7 +244,7 @@ describe('Push notifications', function() {
       server.savePreferences({
         email: 'copayer1@domain.com',
         language: 'es',
-        unit: 'btc',
+        unit: 'ltc',
       }, function(err) {
         server.createAddress({}, function(err, address) {
           should.not.exist(err);
@@ -350,7 +350,7 @@ describe('Push notifications', function() {
       helpers.stubUtxos(server, wallet, 1, function() {
         var txOpts = {
           outputs: [{
-            toAddress: '18PzpUFkFZE8zKWUPvfykkTxmB9oMR8qP7',
+            toAddress: 'LW2DcC8tHkjhKVXUaBwCiBAuHida4mwYaK',
             amount: 0.8e8
           }],
           feePerKb: 100e2
@@ -395,7 +395,7 @@ describe('Push notifications', function() {
       helpers.stubUtxos(server, wallet, 1, function() {
         var txOpts = {
           outputs: [{
-            toAddress: '18PzpUFkFZE8zKWUPvfykkTxmB9oMR8qP7',
+            toAddress: 'LW2DcC8tHkjhKVXUaBwCiBAuHida4mwYaK',
             amount: 0.8e8
           }],
           feePerKb: 100e2
@@ -479,7 +479,7 @@ describe('Push notifications', function() {
             pushNotificationsOpts: {
               templatePath: './lib/templates',
               defaultLanguage: 'en',
-              defaultUnit: 'btc',
+              defaultUnit: 'ltc',
               subjectPrefix: '',
               pushServerUrl: 'http://localhost:8000',
               authorizationKey: 'secret',
